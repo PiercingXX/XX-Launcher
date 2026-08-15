@@ -12,12 +12,15 @@ data class ThemeColors(
 
 class ThemeManager(private val context: Context, private val settingsRepo: SettingsRepository) {
 
-    // Built-in theme presets, in display order for the preview strip
+    // Built-in theme presets, in display order for the preview strip.
+    // Names, values and order are BRAND-GUIDE.md §3.3 — Nope-Mode's
+    // BackgroundTheme mirrors this list, so the two have to change together.
     val presets = linkedMapOf(
         "amoled" to ThemeColors(0xFF000000.toInt(), 0xFFFFFFFF.toInt()),
-        "graphite" to ThemeColors(0xFF111827.toInt(), 0xFFFFFFFF.toInt()),
+        "graphite" to ThemeColors(0xFF131316.toInt(), 0xFFFFFFFF.toInt()),
         "forest" to ThemeColors(0xFF10261B.toInt(), 0xFFFFFFFF.toInt()),
         "ocean" to ThemeColors(0xFF0F1C2E.toInt(), 0xFFFFFFFF.toInt()),
+        "burgundy" to ThemeColors(0xFF2A1018.toInt(), 0xFFFFFFFF.toInt()),
         "paper" to ThemeColors(0xFFF3EEE2.toInt(), 0xFF1A1A1A.toInt()),
         "mist" to ThemeColors(0xFFE6EDF5.toInt(), 0xFF1A1A1A.toInt())
     )
