@@ -45,8 +45,10 @@ Interaction is gesture-driven:
 | Double-tap | Lock the screen (needs the accessibility service) |
 | Long-press home background | Open launcher settings |
 | Tap a slot | Launch the app, drop the folder open inline, or (empty slot) open the app picker |
-| Long-press a slot | Open the app picker for that slot (plus move up/down and clear rows) |
+| Long-press a slot | Open the app picker for that slot (plus move, rearrange, folder options, new folder, and clear rows) |
 | Long-press a drawer row | Item action menu (add to home, hide, pin, rename, folder, uninstall…) |
+
+Settings → Gestures → "Gestures" shows this table in-app.
 
 The app is self-contained. The **only** outbound network request in the entire
 codebase is the Open-Meteo weather lookup in `WeatherHelper.kt`.
@@ -364,10 +366,11 @@ Hosts `SettingsFragment : PreferenceFragmentCompat` over `R.xml.preferences`.
   `OpenDocument`; both report success and failure by toast, and a successful
   import additionally warns that permissions and custom fonts are not restored.
 
-#### `PinItemActivity.kt` (47 lines)
-The standard `CONFIRM_PIN_SHORTCUT` confirmation activity. Accepts pinned
-shortcut requests (API 26+), rejects widget requests, and refreshes the app
-list. It shows no UI of its own — it toasts and finishes.
+#### `PinItemActivity.kt`
+The standard `CONFIRM_PIN_SHORTCUT` confirmation activity (API 26+). Shows a
+themed confirmation dialog before accepting a pinned-shortcut request — so apps
+cannot silently inject drawer rows — rejects widget requests, and refreshes the
+app list. `finish()` is deferred to the dialog's dismiss listener.
 
 ### `com.launcher.data`
 

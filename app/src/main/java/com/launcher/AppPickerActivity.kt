@@ -1,14 +1,21 @@
 package com.launcher
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.TypedValue
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.launcher.data.AppInfo
 import com.launcher.theme.applyLauncherFont
+import com.launcher.theme.applyLauncherTheme
+import com.launcher.util.showToast
 import kotlinx.coroutines.launch
 
 /**
@@ -51,10 +58,78 @@ class AppPickerActivity : AppCompatActivity() {
             }
         }
 
+        fun showNewFolderDialog() {
+            val input = EditText(this).apply {
+                imeOptions = EditorInfo.IME_ACTION_DONE
+                isSingleLine = true
+                applyLauncherFont(app.settings.fontFamily)
+            }
+
+            fun save() {
+                val name = input.text.toString().trim()
+                lifecycleScope.launch {
+                    app.folders.createFolder(name).fold(
+                        onSuccess = { folder ->
+                            setResult(
+                                RESULT_OK,
+                                Intent()
+                                    .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                                    .putExtra(EXTRA_FOLDER_ID, folder.id)
+                                    .putExtra(EXTRA_LABEL, folder.name),
+                            )
+                            finish()
+                        },
+                        onFailure = {
+                            showToast(getString(R.string.toast_invalid_folder_name))
+                        },
+                    )
+                }
+            }
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.picker_new_folder)
+                .setView(input)
+                .setPositiveButton(R.string.action_done) { _, _ -> save() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+
+            input.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    save()
+                    dialog.dismiss()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            dialog.show()
+            dialog.applyLauncherTheme(app.themeManager, app.settings.fontFamily)
+            input.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        }
+
         fun render(apps: List<AppInfo>, folders: List<com.launcher.data.Folder>) {
             container.removeAllViews()
             if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_UP, false)) addMoveRow(up = true)
             if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_DOWN, false)) addMoveRow(up = false)
+            if (intent.getBooleanExtra(EXTRA_ALLOW_REARRANGE, false)) {
+                addRow(getString(R.string.picker_rearrange)) {
+                    setResult(RESULT_OK, Intent()
+                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                        .putExtra(EXTRA_REARRANGE, true))
+                    finish()
+                }
+            }
+            if (intent.getIntExtra(EXTRA_FOLDER_OPTIONS_ID, -1) >= 0) {
+                addRow(getString(R.string.picker_folder_options)) {
+                    setResult(RESULT_OK, Intent()
+                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                        .putExtra(EXTRA_FOLDER_OPTIONS, true))
+                    finish()
+                }
+            }
             if (allowClear) {
                 val clearLabel = intent.getStringExtra(EXTRA_CLEAR_LABEL)
                     ?: getString(R.string.picker_clear_slot)
@@ -72,6 +147,11 @@ class AppPickerActivity : AppCompatActivity() {
                         .putExtra(EXTRA_FOLDER_ID, folder.id)
                         .putExtra(EXTRA_LABEL, folder.name))
                     finish()
+                }
+            }
+            if (allowFolders) {
+                addRow(getString(R.string.picker_new_folder)) {
+                    showNewFolderDialog()
                 }
             }
             apps.forEach { appInfo ->
@@ -120,5 +200,9 @@ class AppPickerActivity : AppCompatActivity() {
         const val EXTRA_ALLOW_MOVE_UP = "allow_move_up"
         const val EXTRA_ALLOW_MOVE_DOWN = "allow_move_down"
         const val EXTRA_MOVE_UP = "move_up"
+        const val EXTRA_ALLOW_REARRANGE = "allow_rearrange"
+        const val EXTRA_REARRANGE = "rearrange"
+        const val EXTRA_FOLDER_OPTIONS_ID = "folder_options_id"
+        const val EXTRA_FOLDER_OPTIONS = "folder_options"
     }
 }

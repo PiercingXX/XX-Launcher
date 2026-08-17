@@ -75,6 +75,7 @@ class FolderManager(
                     packageName = packageName,
                     activityClassName = activity.componentName.className,
                     label = rename.ifBlank { original },
+                    originalLabel = original,
                     userToken = serializeUser(user),
                     isSystem = false,
                     installedAt = activity.firstInstallTime,

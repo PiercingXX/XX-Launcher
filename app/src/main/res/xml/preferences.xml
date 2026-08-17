@@ -96,6 +96,12 @@
         android:title="@string/pref_category_gestures"
         app:iconSpaceReserved="false">
 
+        <Preference
+            android:key="gestures_help"
+            android:title="@string/pref_gestures"
+            android:summary="What every swipe, tap, and long-press does"
+            app:iconSpaceReserved="false" />
+
         <SwitchPreference
             android:key="swipe_left_enabled"
             android:title="Enable Swipe Left"

@@ -184,8 +184,9 @@ class SettingsActivity : AppCompatActivity() {
                 val pkg = data.getStringExtra(AppPickerActivity.EXTRA_PACKAGE).orEmpty()
                 val activity = data.getStringExtra(AppPickerActivity.EXTRA_ACTIVITY).orEmpty()
                 val user = data.getStringExtra(AppPickerActivity.EXTRA_USER).orEmpty()
+                val shortcutId = data.getStringExtra(AppPickerActivity.EXTRA_SHORTCUT_ID).orEmpty()
                 if (pkg.isNotBlank()) {
-                    app.settings.setWidgetTapAction(widget, "$pkg|$activity|$user")
+                    app.settings.setWidgetTapAction(widget, "$pkg|$activity|$user|$shortcutId")
                 }
             }
         }
@@ -242,6 +243,15 @@ class SettingsActivity : AppCompatActivity() {
             }
             findPreference<Preference>("hidden_apps")?.setOnPreferenceClickListener {
                 showHiddenApps(); true
+            }
+            findPreference<Preference>("gestures_help")?.setOnPreferenceClickListener {
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.pref_gestures)
+                    .setMessage(R.string.gestures_help_text)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+                    .applyLauncherTheme(app.themeManager, app.settings.fontFamily)
+                true
             }
             findPreference<Preference>("widgets_config")?.setOnPreferenceClickListener {
                 showWidgetConfigDialog(); true
@@ -396,7 +406,9 @@ class SettingsActivity : AppCompatActivity() {
                 requireContext().showToast(getString(R.string.no_hidden_apps))
                 return
             }
-            val labels = hidden.map { it.substringBefore("|") }.toTypedArray()
+            // Show real app labels; fall back to the package for stale keys.
+            val byKey = app.appRepo.apps.value.orEmpty().associateBy({ it.key }, { it.label })
+            val labels = hidden.map { byKey[it] ?: it.substringBefore("|") }.toTypedArray()
             AlertDialog.Builder(requireContext())
                 .setTitle(R.string.pref_hidden_apps)
                 .setItems(labels) { _, which ->

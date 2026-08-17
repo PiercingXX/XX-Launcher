@@ -55,6 +55,7 @@
     <string name="toast_invalid_folder_name">Invalid folder name</string>
     <string name="toast_uninstall_failed">Could not uninstall</string>
     <string name="toast_added_to_home">Added to home screen</string>
+    <string name="toast_already_in_folder">Already in that folder</string>
     <string name="toast_already_on_home">Already on the home screen</string>
     <string name="toast_home_full">Home screen is full</string>
     <string name="toast_backup_created">Backup created</string>
@@ -88,6 +89,15 @@
     <string name="widget_tap_action">Tap…</string>
     <string name="widget_tap_default">Default action</string>
     <string name="action_delete_shortcut">Delete Shortcut</string>
+    <string name="picker_new_folder">New Folder…</string>
+    <string name="picker_rearrange">Rearrange…</string>
+    <string name="picker_folder_options">Folder Options…</string>
+    <string name="rearrange_home_title">Rearrange Home Screen</string>
+    <string name="rearrange_pinned_title">Rearrange Pinned Apps</string>
+    <string name="pref_gestures">Gestures</string>
+    <string name="gestures_help_text">Swipe up — open the app drawer\nSwipe down — notifications or web search\nSwipe left / right — launch the configured apps\nDouble-tap — lock the screen\nLong-press the background — open settings\nTap a slot — launch the app or open its folder\nTap an empty slot — choose an app\nLong-press a slot — app picker with move, rearrange, and clear\nLong-press any app row — actions: add to home, hide, rename, folders, uninstall\nIn search, start with ! for a web search</string>
+    <string name="pin_confirm_message">Add \"%s\" to the app drawer?</string>
+    <string name="pin_confirm_add">Add</string>
     <string name="pin_request_invalid">Invalid pin request</string>
     <string name="pin_shortcut_success">Shortcut pinned</string>
     <string name="pin_shortcut_failed">Could not pin shortcut</string>

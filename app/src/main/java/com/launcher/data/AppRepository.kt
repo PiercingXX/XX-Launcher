@@ -35,6 +35,8 @@ data class AppInfo(
     val sizeBytes: Long,
     /** Non-null for Android pinned-shortcut rows. */
     val shortcutId: String? = null,
+    /** Pre-rename label, so search still matches the app's real name. */
+    val originalLabel: String = "",
 ) {
     val isWorkProfile: Boolean get() = userToken == com.launcher.util.USER_MANAGED
     val isNew: Boolean get() = System.currentTimeMillis() - installedAt < ONE_HOUR_MS
@@ -46,17 +48,22 @@ data class AppInfo(
         else "$packageName|$userToken"
 
     /**
-     * Forgiving matcher: case-insensitive substring on the shown label, plus a
-     * separator/diacritic-stripped pass so "eink" matches "E-Ink".
+     * Forgiving matcher: case-insensitive substring on the shown label (and on
+     * the pre-rename original, so a renamed app is still findable by its real
+     * name), plus a separator/diacritic-stripped pass so "eink" matches "E-Ink".
      */
     fun matches(query: CharSequence): Boolean {
         if (query.isBlank()) return true
-        return label.contains(query.trim(), true) ||
-            Normalizer.normalize(label, Normalizer.Form.NFD)
+        return labelMatches(label, query) ||
+            (originalLabel.isNotBlank() && labelMatches(originalLabel, query))
+    }
+
+    private fun labelMatches(candidate: String, query: CharSequence): Boolean =
+        candidate.contains(query.trim(), true) ||
+            Normalizer.normalize(candidate, Normalizer.Form.NFD)
                 .replace(DIACRITICS, "")
                 .replace(SEPARATORS, "")
                 .contains(query.trim(), true)
-    }
 }
 
 /**
@@ -123,6 +130,7 @@ class AppRepository(private val context: Context, private val settings: Settings
                         packageName = packageName,
                         activityClassName = activity.componentName.className,
                         label = rename.ifBlank { original },
+                        originalLabel = original,
                         userToken = token,
                         isSystem = (activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
                         installedAt = activity.firstInstallTime,
@@ -163,6 +171,7 @@ class AppRepository(private val context: Context, private val settings: Settings
                             packageName = shortcut.`package`,
                             activityClassName = null,
                             label = rename.ifBlank { original },
+                            originalLabel = original,
                             userToken = token,
                             isSystem = false,
                             installedAt = 0L,

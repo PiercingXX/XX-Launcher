@@ -166,9 +166,14 @@ fun Context.openAppInfo(packageName: String, user: UserHandle) {
     }
 }
 
-fun Context.requestUninstall(packageName: String) {
+// EXTRA_USER routes the request to the right profile's copy; without it a
+// work-profile uninstall would act on the personal install.
+fun Context.requestUninstall(packageName: String, user: UserHandle) {
     try {
-        startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName")))
+        startActivity(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))
+                .putExtra(Intent.EXTRA_USER, user)
+        )
     } catch (e: Exception) {
         Log.w(TAG, "Unable to start uninstall", e)
     }

@@ -219,8 +219,13 @@ class AppDrawerActivity : AppCompatActivity() {
         val sorted = sortApps(browseList, pinnedOrder)
         currentResults = sorted
 
-        // Auto-launch on exactly one result; a leading space suppresses it.
-        if (searching && sorted.size == 1 && !rawQuery.startsWith(" ")) {
+        // The launcher's own settings row stays findable by search too.
+        val settingsRowVisible = !searching ||
+            getString(R.string.launcher_settings).contains(query, true)
+
+        // Auto-launch on exactly one result; a leading space suppresses it, and
+        // a visible settings row keeps the list on screen so it stays reachable.
+        if (searching && sorted.size == 1 && !settingsRowVisible && !rawQuery.startsWith(" ")) {
             launchApp(sorted.first())
             return
         }
@@ -229,7 +234,7 @@ class AppDrawerActivity : AppCompatActivity() {
             sorted,
             if (searching) emptyList() else folders,
             showWebSearchRow = searching && sorted.isEmpty(),
-            showSettingsRow = !searching,
+            showSettingsRow = settingsRowVisible,
         )
     }
 

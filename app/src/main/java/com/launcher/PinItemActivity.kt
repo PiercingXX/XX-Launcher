@@ -4,7 +4,9 @@ import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.launcher.theme.applyLauncherTheme
 import com.launcher.util.showToast
 
 /** Accepts Android pin-shortcut requests (the standard confirmation activity). */
@@ -25,23 +27,45 @@ class PinItemActivity : AppCompatActivity() {
             handleRequest(request)
         } else {
             showToast(getString(R.string.pin_request_invalid))
+            finish()
         }
-        finish()
     }
 
+    // Pinning multiplies drawer rows, so it needs explicit consent — the
+    // confirmation dialog defers finish() until the user has answered.
     @RequiresApi(Build.VERSION_CODES.O)
     private fun handleRequest(request: LauncherApps.PinItemRequest) {
-        when (request.requestType) {
-            LauncherApps.PinItemRequest.REQUEST_TYPE_SHORTCUT -> {
-                if (request.shortcutInfo != null && request.accept()) {
+        if (request.requestType != LauncherApps.PinItemRequest.REQUEST_TYPE_SHORTCUT) {
+            showToast(getString(R.string.pin_widgets_unsupported))
+            finish()
+            return
+        }
+        val shortcut = request.shortcutInfo
+        if (shortcut == null) {
+            showToast(getString(R.string.pin_shortcut_failed))
+            finish()
+            return
+        }
+
+        val app = LauncherApplication.from(this)
+        val label = shortcut.shortLabel?.toString()
+            ?: shortcut.longLabel?.toString()
+            ?: shortcut.`package`
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.pin_confirm_message, label))
+            .setPositiveButton(R.string.pin_confirm_add) { _, _ ->
+                val accepted =
+                    runCatching { request.isValid && request.accept() }.getOrDefault(false)
+                if (accepted) {
                     showToast(getString(R.string.pin_shortcut_success))
-                    LauncherApplication.from(this).appRepo.refresh()
+                    app.appRepo.refresh()
                 } else {
                     showToast(getString(R.string.pin_shortcut_failed))
                 }
             }
-
-            else -> showToast(getString(R.string.pin_widgets_unsupported))
-        }
+            .setNegativeButton(android.R.string.cancel, null)
+            .setOnDismissListener { finish() }
+            .show()
+            .applyLauncherTheme(app.themeManager, app.settings.fontFamily)
     }
 }

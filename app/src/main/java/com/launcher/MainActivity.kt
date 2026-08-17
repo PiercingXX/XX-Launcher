@@ -4,6 +4,7 @@ import android.Manifest
 import android.animation.LayoutTransition
 import android.app.role.RoleManager
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,7 +46,9 @@ import com.launcher.util.showStatusBar
 import com.launcher.util.showToast
 import com.launcher.util.userFromToken
 import com.launcher.widgets.WidgetContainer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -75,6 +79,16 @@ class MainActivity : AppCompatActivity() {
         val slot = data.getIntExtra(AppPickerActivity.EXTRA_SLOT_INDEX, -1)
         if (result.resultCode != RESULT_OK || slot < 1) return@registerForActivityResult
         when {
+            data.getBooleanExtra(AppPickerActivity.EXTRA_REARRANGE, false) ->
+                showSlotRearrangeDialog()
+
+            data.getBooleanExtra(AppPickerActivity.EXTRA_FOLDER_OPTIONS, false) -> {
+                val entry = settings.getSlot(slot)
+                if (entry.isFolder) {
+                    itemMenu.showFolderMenu(entry.folderId, entry.label) { renderHomeSlots() }
+                }
+            }
+
             data.hasExtra(AppPickerActivity.EXTRA_MOVE_UP) ->
                 swapSlots(
                     slot,
@@ -144,7 +158,12 @@ class MainActivity : AppCompatActivity() {
             it.launchTapAction = { action ->
                 val parts = action.split("|")
                 if (parts.size >= 3) {
-                    appRepo.launch(parts[0], parts[1].ifBlank { null }, parts[2])
+                    appRepo.launch(
+                        parts[0],
+                        parts[1].ifBlank { null },
+                        parts[2],
+                        parts.getOrNull(3)?.ifBlank { null },
+                    )
                 } else {
                     false
                 }
@@ -251,6 +270,48 @@ class MainActivity : AppCompatActivity() {
             binding.homeSlotsContainer.addView(view, params)
             slotViews.add(view)
         }
+
+        // Slot labels are a snapshot from pick time; refresh them from live names.
+        val slotViewSnapshot = slotViews.mapIndexed { index, view -> index + 1 to view }
+        lifecycleScope.launch {
+            for ((slot, view) in slotViewSnapshot) {
+                val entry = settings.getSlot(slot)
+                if (entry.isEmpty) continue
+                val resolved = resolveSlotLabel(entry) ?: continue
+                if (resolved == entry.label) continue
+                settings.setSlot(slot, entry.copy(label = resolved))
+                if (view.isAttachedToWindow) {
+                    view.text = resolved
+                    view.contentDescription =
+                        getString(R.string.accessibility_home_slot_filled, resolved, slot)
+                }
+            }
+        }
+    }
+
+    /** Current name for a filled slot, or null to leave the stored copy alone. */
+    private suspend fun resolveSlotLabel(entry: SlotEntry): String? {
+        if (entry.isFolder) {
+            return LauncherApplication.from(this).folders.getFolder(entry.folderId)?.name
+        }
+        val key = if (entry.shortcutId.isNotBlank()) {
+            "${entry.packageName}|${entry.shortcutId}|${entry.userToken}"
+        } else {
+            "${entry.packageName}|${entry.userToken}"
+        }
+        val rename = settings.getRenameLabel(key)
+        if (rename.isNotBlank()) return rename
+        if (entry.shortcutId.isNotBlank()) return null
+        return withContext(Dispatchers.IO) {
+            val launcherApps = getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
+            val activities = runCatching {
+                launcherApps.getActivityList(entry.packageName, userFromToken(entry.userToken))
+            }.getOrNull().orEmpty()
+            val activity = activities.firstOrNull {
+                it.componentName.className == entry.activityClassName
+            } ?: activities.firstOrNull()
+            activity?.label?.toString()
+        }
     }
 
     private fun onSlotClicked(slot: Int) {
@@ -276,14 +337,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onSlotLongPressed(slot: Int) {
-        val filled = !settings.getSlot(slot).isEmpty
+        val entry = settings.getSlot(slot)
+        val filled = !entry.isEmpty
         val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+        val filledCount = (1..visible).count { !settings.getSlot(it).isEmpty }
         val intent = Intent(this, AppPickerActivity::class.java)
             .putExtra(AppPickerActivity.EXTRA_SLOT_INDEX, slot)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_FOLDERS, true)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_CLEAR, filled)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_MOVE_UP, filled && slot > 1)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_MOVE_DOWN, filled && slot < visible)
+            .putExtra(AppPickerActivity.EXTRA_ALLOW_REARRANGE, filledCount >= 2)
+        if (entry.isFolder) {
+            intent.putExtra(AppPickerActivity.EXTRA_FOLDER_OPTIONS_ID, entry.folderId)
+        }
         pickSlotAppLauncher.launch(intent)
     }
 
@@ -291,6 +358,103 @@ class MainActivity : AppCompatActivity() {
         val first = settings.getSlot(a)
         settings.setSlot(a, settings.getSlot(b))
         settings.setSlot(b, first)
+    }
+
+    /**
+     * Manual home-slot ordering. Rows rebuild in place after every swap so the
+     * sheet stays open for a run of adjustments; [renderHomeSlots] fires on dismiss.
+     */
+    private fun showSlotRearrangeDialog() {
+        val colors = themeManager.getCurrentColors()
+        val fontKey = settings.fontFamily
+        val scale = settings.textSizeScale
+        val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), dp(4))
+        }
+
+        fun arrow(
+            glyph: Int,
+            enabled: Boolean,
+            description: String,
+            onTap: () -> Unit,
+        ): TextView = TextView(this).apply {
+            text = getString(glyph)
+            setTextColor(colors.textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            // Dimmed rather than hidden so rows keep a stable width.
+            alpha = if (enabled) 1f else 0.25f
+            contentDescription = description
+            applyLauncherFont(fontKey)
+            if (enabled) {
+                isClickable = true
+                setOnClickListener { onTap() }
+            }
+        }
+
+        fun render() {
+            list.removeAllViews()
+            for (slot in 1..visible) {
+                val entry = settings.getSlot(slot)
+                val name = if (entry.isEmpty) getString(R.string.home_slot_empty) else entry.label
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val label = TextView(this).apply {
+                    text = name
+                    setTextColor(colors.textColor)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
+                    setPadding(0, dp(6), dp(8), dp(6))
+                    alpha = if (entry.isEmpty) 0.4f else 1f
+                    applyLauncherFont(fontKey)
+                }
+                row.addView(
+                    label,
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                row.addView(
+                    arrow(
+                        R.string.rearrange_up,
+                        enabled = slot > 1,
+                        description = getString(R.string.accessibility_move_up, name),
+                    ) {
+                        swapSlots(slot, slot - 1)
+                        render()
+                    },
+                )
+                row.addView(
+                    arrow(
+                        R.string.rearrange_down,
+                        enabled = slot < visible,
+                        description = getString(R.string.accessibility_move_down, name),
+                    ) {
+                        swapSlots(slot, slot + 1)
+                        render()
+                    },
+                )
+                list.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+        }
+
+        render()
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rearrange_home_title)
+            .setView(ScrollView(this).apply { addView(list) })
+            .setPositiveButton(R.string.action_done, null)
+            .setOnDismissListener { renderHomeSlots() }
+            .show()
+            .applyLauncherTheme(themeManager, fontKey)
     }
 
     // Inline folder drop-down: rows appear directly under the folder slot; the

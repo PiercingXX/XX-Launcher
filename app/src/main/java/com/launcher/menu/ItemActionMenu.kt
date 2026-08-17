@@ -112,6 +112,9 @@ class ItemActionMenu(
                 items.add(context.getString(R.string.action_move_down) to {
                     settings.movePinned(app.key, up = false); onChanged()
                 })
+                items.add(context.getString(R.string.action_rearrange) to {
+                    showPinnedRearrangeDialog(onChanged)
+                })
             }
             if (folders != null) {
                 items.add(context.getString(R.string.action_add_to_folder) to {
@@ -161,7 +164,10 @@ class ItemActionMenu(
                     context.showToast(context.getString(R.string.toast_uninstall_failed))
                     context.openAppInfo(app.packageName, context.userFromToken(app.userToken))
                 } else {
-                    context.requestUninstall(app.packageName)
+                    context.requestUninstall(
+                        app.packageName,
+                        context.userFromToken(app.userToken),
+                    )
                 }
             })
         }
@@ -394,6 +400,112 @@ class ItemActionMenu(
         }
     }
 
+    /**
+     * Manual ordering for pinned drawer rows; mirrors the folder rearrange
+     * sheet, but pinned order lives in prefs so no coroutine is needed.
+     */
+    private fun showPinnedRearrangeDialog(onChanged: () -> Unit) {
+        if (settings.pinnedApps.size < 2) {
+            context.showToast(context.getString(R.string.toast_nothing_to_rearrange))
+            return
+        }
+
+        val colors = themeManager.getCurrentColors()
+        val fontKey = settings.fontFamily
+        val scale = settings.textSizeScale
+        fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+
+        fun labelFor(key: String): String =
+            appRepo.apps.value?.firstOrNull { it.key == key }?.label
+                ?: key.substringBefore("|")
+
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), dp(4))
+        }
+
+        fun arrow(
+            glyph: Int,
+            enabled: Boolean,
+            description: String,
+            onTap: () -> Unit,
+        ): TextView = TextView(context).apply {
+            text = context.getString(glyph)
+            setTextColor(colors.textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            // Dimmed rather than hidden so rows keep a stable width.
+            alpha = if (enabled) 1f else 0.25f
+            contentDescription = description
+            applyLauncherFont(fontKey)
+            if (enabled) {
+                isClickable = true
+                setOnClickListener { onTap() }
+            }
+        }
+
+        fun render() {
+            list.removeAllViews()
+            val keys = settings.pinnedApps
+            keys.forEachIndexed { index, key ->
+                val labelText = labelFor(key)
+                fun move(up: Boolean) {
+                    settings.movePinned(key, up)
+                    render()
+                }
+
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val label = TextView(context).apply {
+                    text = labelText
+                    setTextColor(colors.textColor)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
+                    setPadding(0, dp(6), dp(8), dp(6))
+                    applyLauncherFont(fontKey)
+                }
+                row.addView(
+                    label,
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                row.addView(
+                    arrow(
+                        R.string.rearrange_up,
+                        enabled = index > 0,
+                        description = context.getString(R.string.accessibility_move_up, labelText),
+                    ) { move(up = true) }
+                )
+                row.addView(
+                    arrow(
+                        R.string.rearrange_down,
+                        enabled = index < keys.size - 1,
+                        description = context.getString(R.string.accessibility_move_down, labelText),
+                    ) { move(up = false) }
+                )
+                list.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    )
+                )
+            }
+        }
+
+        render()
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle(R.string.rearrange_pinned_title)
+            .setView(ScrollView(context).apply { addView(list) })
+            .setPositiveButton(R.string.action_done, null)
+            .setOnDismissListener { onChanged() }
+            .create()
+        dialog.show()
+        dialog.applyLauncherTheme(themeManager, fontKey)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss() }
+    }
+
     private fun showAddToFolderDialog(app: AppInfo, onChanged: () -> Unit) {
         val folders = folders ?: return
         scope.launch {
@@ -404,8 +516,14 @@ class ItemActionMenu(
                 .setItems(names.toTypedArray()) { _, which ->
                     if (which < existing.size) {
                         scope.launch {
-                            folders.addMember(existing[which].id, app)
-                            onChanged()
+                            folders.addMember(existing[which].id, app).fold(
+                                onSuccess = { onChanged() },
+                                onFailure = {
+                                    context.showToast(
+                                        context.getString(R.string.toast_already_in_folder)
+                                    )
+                                },
+                            )
                         }
                     } else {
                         showCreateFolderDialog(app, onChanged)
