@@ -1,4 +1,4 @@
-# PiercingXX Launcher — Developer Manual
+# XX-Launcher — Developer Manual
 
 A complete technical reference for the codebase: what every file does, how the
 data flows, and a full audit of dead code, defects, and hygiene issues.
@@ -29,7 +29,7 @@ data flows, and a full audit of dead code, defects, and hygiene issues.
 
 ## 1. What the app is
 
-PiercingXX Launcher is a text-only Android home screen. There are no icons and
+XX-Launcher is a text-only Android home screen. There are no icons and
 no wallpaper: the home screen is a vertically-centered column of app labels
 (up to 8 "slots"), with an optional widget block (clock / date / weather /
 battery) centered in the upper half of the screen.
@@ -110,7 +110,7 @@ unsigned APK with `minifyEnabled false`.
 ## 3. Project layout
 
 ```
-PiercingXX-Launcher/
+XX-Launcher/
 ├── build.gradle              root build script (plugin versions, clean task)
 ├── settings.gradle           repositories + :app module
 ├── gradle.properties         androidx flag, JVM args

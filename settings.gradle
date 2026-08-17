@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PiercingXX-Launcher"
+rootProject.name = "XX-Launcher"
 include ':app'

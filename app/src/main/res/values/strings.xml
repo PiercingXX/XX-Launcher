@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PiercingXX Launcher</string>
-    <string name="app_name_short">PiercingXX</string>
+    <string name="app_name">XX-Launcher</string>
+    <string name="app_name_short">XX</string>
     <string name="title_settings">Settings</string>
     
     <!-- Settings -->

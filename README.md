@@ -1,4 +1,4 @@
-# PiercingXX Launcher
+# XX-Launcher
 
 A minimal, text-only Android launcher built for focus. No icons, no
 wallpaper clutter — just the apps you actually use, a fast search
@@ -68,7 +68,7 @@ unless you pass:
 ./gradlew installDebug
 ```
 
-Then set PiercingXX as your default launcher when prompted (or via
+Then set XX-Launcher as your default launcher when prompted (or via
 Settings → Default Launcher).
 
 ## Version
