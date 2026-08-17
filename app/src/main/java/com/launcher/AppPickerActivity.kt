@@ -42,8 +42,19 @@ class AppPickerActivity : AppCompatActivity() {
             })
         }
 
+        fun addMoveRow(up: Boolean) {
+            addRow(getString(if (up) R.string.action_move_up else R.string.action_move_down)) {
+                setResult(RESULT_OK, Intent()
+                    .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                    .putExtra(EXTRA_MOVE_UP, up))
+                finish()
+            }
+        }
+
         fun render(apps: List<AppInfo>, folders: List<com.launcher.data.Folder>) {
             container.removeAllViews()
+            if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_UP, false)) addMoveRow(up = true)
+            if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_DOWN, false)) addMoveRow(up = false)
             if (allowClear) {
                 val clearLabel = intent.getStringExtra(EXTRA_CLEAR_LABEL)
                     ?: getString(R.string.picker_clear_slot)
@@ -106,5 +117,8 @@ class AppPickerActivity : AppCompatActivity() {
         const val EXTRA_CLEAR_LABEL = "clear_label"
         const val EXTRA_ALLOW_FOLDERS = "allow_folders"
         const val EXTRA_ALLOW_CLEAR = "allow_clear"
+        const val EXTRA_ALLOW_MOVE_UP = "allow_move_up"
+        const val EXTRA_ALLOW_MOVE_DOWN = "allow_move_down"
+        const val EXTRA_MOVE_UP = "move_up"
     }
 }

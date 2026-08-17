@@ -28,7 +28,6 @@
     <string name="action_create_folder">Create Folder</string>
     <string name="action_add_to_folder">Add to Folder</string>
     <string name="action_add_to_home">Add to Home Screen</string>
-    <string name="action_choose_app">Choose App…</string>
     <string name="action_rearrange">Rearrange Apps</string>
     <string name="action_sort_alphabetically">Sort A–Z</string>
     <string name="action_done">Done</string>
