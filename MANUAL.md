@@ -45,7 +45,7 @@ Interaction is gesture-driven:
 | Double-tap | Lock the screen (needs the accessibility service) |
 | Long-press home background | Open launcher settings |
 | Tap a slot | Launch the app, drop the folder open inline, or (empty slot) open the app picker |
-| Long-press a slot | Open the app picker for that slot |
+| Long-press a slot | Slot menu (choose app, move up/down, clear); empty slots open the picker |
 | Long-press a drawer row | Item action menu (add to home, hide, pin, rename, folder, uninstall…) |
 
 The app is self-contained. The **only** outbound network request in the entire

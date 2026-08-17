@@ -268,12 +268,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // An empty slot goes straight to the picker; a filled one gets the slot
+    // menu so the home screen can be rearranged in place.
     private fun onSlotLongPressed(slot: Int) {
+        val entry = settings.getSlot(slot)
+        if (entry.isEmpty) {
+            openSlotPicker(slot)
+            return
+        }
+        collapseFolder()
+        val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+        val items = mutableListOf<Pair<String, () -> Unit>>()
+        items.add(getString(R.string.action_choose_app) to { openSlotPicker(slot) })
+        if (slot > 1) {
+            items.add(getString(R.string.action_move_up) to { swapSlots(slot, slot - 1) })
+        }
+        if (slot < visible) {
+            items.add(getString(R.string.action_move_down) to { swapSlots(slot, slot + 1) })
+        }
+        items.add(getString(R.string.picker_clear_slot) to {
+            settings.clearSlot(slot)
+            renderHomeSlots()
+        })
+        AlertDialog.Builder(this)
+            .setTitle(entry.label)
+            .setItems(items.map { it.first }.toTypedArray()) { _, which ->
+                items[which].second()
+            }
+            .show()
+            .applyLauncherTheme(themeManager, settings.fontFamily)
+    }
+
+    private fun openSlotPicker(slot: Int) {
         val intent = Intent(this, AppPickerActivity::class.java)
             .putExtra(AppPickerActivity.EXTRA_SLOT_INDEX, slot)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_FOLDERS, true)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_CLEAR, !settings.getSlot(slot).isEmpty)
         pickSlotAppLauncher.launch(intent)
+    }
+
+    private fun swapSlots(a: Int, b: Int) {
+        val first = settings.getSlot(a)
+        settings.setSlot(a, settings.getSlot(b))
+        settings.setSlot(b, first)
+        renderHomeSlots()
     }
 
     // Inline folder drop-down: rows appear directly under the folder slot; the
