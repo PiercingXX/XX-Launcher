@@ -263,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                     renderHomeSlots()
                 }
             }
-            else -> showToast(getString(R.string.long_press_to_select_app))
+            // An empty slot goes straight to the picker; long-press works too.
+            else -> onSlotLongPressed(slot)
         }
     }
 

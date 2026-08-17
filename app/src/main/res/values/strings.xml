@@ -27,6 +27,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_create_folder">Create Folder</string>
     <string name="action_add_to_folder">Add to Folder</string>
+    <string name="action_add_to_home">Add to Home Screen</string>
     <string name="action_rearrange">Rearrange Apps</string>
     <string name="action_sort_alphabetically">Sort A–Z</string>
     <string name="action_done">Done</string>
@@ -53,13 +54,15 @@
     <string name="toast_nothing_to_rearrange">Needs at least two apps to rearrange</string>
     <string name="toast_invalid_folder_name">Invalid folder name</string>
     <string name="toast_uninstall_failed">Could not uninstall</string>
+    <string name="toast_added_to_home">Added to home screen</string>
+    <string name="toast_already_on_home">Already on the home screen</string>
+    <string name="toast_home_full">Home screen is full</string>
     <string name="toast_backup_created">Backup created</string>
     <string name="toast_restore_complete">Restore complete</string>
     <string name="toast_restore_failed">Restore failed</string>
     
     <!-- Home / general -->
     <string name="home_slot_empty">· · ·</string>
-    <string name="long_press_to_select_app">Long-press to choose an app</string>
     <string name="launcher_settings">Launcher Settings</string>
     <string name="weather_permission_required">Tap to allow location</string>
     <string name="weather_unavailable">Weather unavailable</string>
@@ -94,7 +97,7 @@
     <string name="accessibility_service_description">Lets the launcher lock the screen on double-tap and open recents. No data is collected and nothing leaves the device.</string>
 
     <!-- Accessibility -->
-    <string name="accessibility_home_slot_empty">Empty home slot %d, long-press to assign</string>
+    <string name="accessibility_home_slot_empty">Empty home slot %d, tap to choose an app</string>
     <string name="accessibility_home_slot_filled">%1$s, home slot %2$d</string>
     <string name="accessibility_open_app_drawer">Open app drawer</string>
     <string name="accessibility_open_settings">Open launcher settings</string>

@@ -19,6 +19,7 @@ import com.launcher.R
 import com.launcher.data.AppInfo
 import com.launcher.data.AppRepository
 import com.launcher.data.SettingsRepository
+import com.launcher.data.SlotEntry
 import com.launcher.folder.FolderManager
 import com.launcher.notification.AppMuteListenerService
 import com.launcher.theme.ThemeManager
@@ -73,6 +74,10 @@ class ItemActionMenu(
                 appRepo.refresh()
                 onChanged()
             }
+        })
+
+        items.add(context.getString(R.string.action_add_to_home) to {
+            addToHomeScreen(app, onChanged)
         })
 
         val hidden = appRepo.isHidden(app)
@@ -162,6 +167,45 @@ class ItemActionMenu(
         }
 
         showThemedList(app.label, items)
+    }
+
+    /**
+     * Puts the app in the first empty visible home slot, growing the visible
+     * slot row by one when every slot is taken (a slot past the visible count
+     * never renders, so a stale entry there is safe to overwrite).
+     */
+    private fun addToHomeScreen(app: AppInfo, onChanged: () -> Unit) {
+        val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+        val alreadyPlaced = (1..visible).any { slot ->
+            val entry = settings.getSlot(slot)
+            !entry.isFolder && entry.packageName == app.packageName &&
+                entry.userToken == app.userToken &&
+                entry.shortcutId == app.shortcutId.orEmpty()
+        }
+        if (alreadyPlaced) {
+            context.showToast(context.getString(R.string.toast_already_on_home))
+            return
+        }
+        val target = (1..SettingsRepository.MAX_SLOTS).firstOrNull { slot ->
+            slot > visible || settings.getSlot(slot).isEmpty
+        }
+        if (target == null) {
+            context.showToast(context.getString(R.string.toast_home_full))
+            return
+        }
+        if (target > visible) settings.slotCount = target
+        settings.setSlot(
+            target,
+            SlotEntry(
+                label = app.label,
+                packageName = app.packageName,
+                activityClassName = app.activityClassName.orEmpty(),
+                userToken = app.userToken,
+                shortcutId = app.shortcutId.orEmpty(),
+            ),
+        )
+        context.showToast(context.getString(R.string.toast_added_to_home))
+        onChanged()
     }
 
     fun showFolderMenu(

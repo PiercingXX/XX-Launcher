@@ -44,9 +44,9 @@ Interaction is gesture-driven:
 | Swipe right | Launch the configured app (default: dialer) |
 | Double-tap | Lock the screen (needs the accessibility service) |
 | Long-press home background | Open launcher settings |
-| Tap a slot | Launch the app, or drop the folder open inline |
+| Tap a slot | Launch the app, drop the folder open inline, or (empty slot) open the app picker |
 | Long-press a slot | Open the app picker for that slot |
-| Long-press a drawer row | Item action menu (hide, pin, rename, folder, uninstall…) |
+| Long-press a drawer row | Item action menu (add to home, hide, pin, rename, folder, uninstall…) |
 
 The app is self-contained. The **only** outbound network request in the entire
 codebase is the Open-Meteo weather lookup in `WeatherHelper.kt`.
@@ -428,8 +428,10 @@ folder's last member deletes the folder and clears any slot pointing at it.
 
 #### `ItemActionMenu.kt` (~440 lines)
 Every long-press action sheet. Menu contents are assembled conditionally: app
-info, change label, hide/show, and "Disable for…" always; pin/unpin, move
-up/down, and "Add to Folder" only for drawer rows; folder-member reordering,
+info, change label, "Add to Home Screen" (first empty visible slot, growing
+the slot row up to the maximum of 8 when full), hide/show, and "Disable
+for…" always; pin/unpin, move up/down, and "Add to Folder" only for drawer
+rows; folder-member reordering,
 "Rearrange Apps", and "Remove from Folder" only inside a folder; delete
 shortcut or uninstall last.
 
