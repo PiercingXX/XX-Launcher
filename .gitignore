@@ -12,10 +12,9 @@ local.properties
 *.ipr
 *.iws
 
-# Keystore (the shared debug keystore is committed deliberately)
+# Keystores (never commit keystores)
 *.keystore
 *.jks
-!app/debug.keystore
 
 # Android Studio
 *.log

@@ -151,7 +151,7 @@
         android:title="@string/pref_category_theme"
         app:iconSpaceReserved="false">
 
-        <com.launcher.settings.ThemePreviewPreference
+        <com.piercingxx.xxlauncher.settings.ThemePreviewPreference
             android:key="theme_strip"
             android:title="Theme Preset"
             app:iconSpaceReserved="false" />

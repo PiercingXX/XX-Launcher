@@ -95,7 +95,7 @@ uninstalls the app afterwards, wiping folders and settings. To keep the install:
 Re-installing the launcher also drops its HOME role. Restore it with:
 
 ```sh
-adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.launcher
+adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.piercingxx.xxlauncher
 ```
 
 ### Signing
@@ -283,7 +283,7 @@ scale range) before anything is written.
 
 ## 6. Module-by-module reference
 
-### `com.launcher` (root)
+### `com.piercingxx.xxlauncher` (root)
 
 #### `LauncherApplication.kt` (27 lines)
 Holds the four repositories as `by lazy` singletons and applies the persisted
@@ -372,7 +372,7 @@ themed confirmation dialog before accepting a pinned-shortcut request — so app
 cannot silently inject drawer rows — rejects widget requests, and refreshes the
 app list. `finish()` is deferred to the dialog's dismiss listener.
 
-### `com.launcher.data`
+### `com.piercingxx.xxlauncher.data`
 
 #### `AppRepository.kt` (~280 lines)
 - `AppInfo` — the app model. `key` is the stable identity used by hidden,
@@ -418,7 +418,7 @@ unit-testable without a device: `plan()` is pure, and `applyIfNeeded()` does
 the I/O. Unresolvable apps are skipped and empty folders are never created.
 `applyIfNeeded()` refuses to run if any slot or folder already exists.
 
-### `com.launcher.folder`
+### `com.piercingxx.xxlauncher.folder`
 
 #### `FolderManager.kt` (~220 lines)
 All folder operations, each on `Dispatchers.IO` and each returning a `Result`.
@@ -427,7 +427,7 @@ renumbers `sortOrder`. `moveInList()` is a free `internal` function (swap with
 neighbour, null at the ends) so it can be unit-tested directly. Removing a
 folder's last member deletes the folder and clears any slot pointing at it.
 
-### `com.launcher.menu`
+### `com.piercingxx.xxlauncher.menu`
 
 #### `ItemActionMenu.kt` (~440 lines)
 Every long-press action sheet. Menu contents are assembled conditionally: app
@@ -444,7 +444,7 @@ than hides the end-of-list arrows so row widths stay stable, and only the
 "Done" button dismisses (the neutral "Sort A–Z" button is re-wired after
 `show()` so it does not auto-close).
 
-### `com.launcher.theme`
+### `com.piercingxx.xxlauncher.theme`
 
 #### `ThemeManager.kt` (77 lines)
 Six built-in presets in display order, plus a `custom` mode whose text colour
@@ -466,7 +466,7 @@ hairline stroke (so the sheet is visible even when it matches the screen
 colour), recolours the whole decor tree, and installs a hierarchy-change
 listener so lazily-created list rows are themed as they land.
 
-### `com.launcher.widgets`
+### `com.piercingxx.xxlauncher.widgets`
 
 #### `WidgetContainer.kt` (~250 lines)
 A custom `LinearLayout` that rebuilds itself from `settings.widgetsOrder`.
@@ -477,7 +477,7 @@ invisible, and a failed refresh leaves the stale reading in place. Each widget
 supports a user-configured tap override, falling back to a sensible default
 (clock → alarms, date → calendar, weather → weather app).
 
-### `com.launcher.weather`
+### `com.piercingxx.xxlauncher.weather`
 
 #### `WeatherHelper.kt` (108 lines)
 Keyless Open-Meteo current-weather lookup over `HttpURLConnection` with 5 s
@@ -486,12 +486,12 @@ network, passive, and GPS providers — no active location request is ever made.
 `parseWeatherSummary()` and `toWeatherLabel()` are `internal` so they can be
 unit-tested with the real `org.json` on the JVM.
 
-### `com.launcher.backup`
+### `com.piercingxx.xxlauncher.backup`
 
 #### `BackupManager.kt` (~220 lines)
 Versioned JSON export/import. See §5.3.
 
-### `com.launcher.accessibility` / `com.launcher.notification`
+### `com.piercingxx.xxlauncher.accessibility` / `com.piercingxx.xxlauncher.notification`
 
 #### `GestureAccessibilityService.kt` (40 lines)
 Exists only so `performGlobalAction` is available for lock-screen and recents.
@@ -503,7 +503,7 @@ Implements "Disable for…": while a package's mute deadline is in the future,
 every notification it posts is cancelled. On connect it sweeps anything posted
 while the listener was down.
 
-### `com.launcher.util`
+### `com.piercingxx.xxlauncher.util`
 
 #### `SystemActions.kt` (~270 lines)
 Context/Activity/View extensions: user-profile token serialisation, toasts,
