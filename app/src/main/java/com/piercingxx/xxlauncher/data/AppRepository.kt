@@ -276,8 +276,27 @@ class AppRepository(private val context: Context, private val settings: Settings
     fun toggleHidden(app: AppInfo) = settings.toggleHidden(app.key)
     fun togglePinned(app: AppInfo) = settings.togglePinned(app.key)
 
+    /**
+     * Persists a rename (blank clears it back to the real label) and rewrites
+     * the label copy of every home slot holding the app, so home and drawer
+     * agree immediately. Folder members store only keys and re-resolve their
+     * labels from the rename map on read, so they need no rewrite.
+     *
+     * Rewrites are slot-keyed and label-only: a rename never moves, clears,
+     * or re-points a slot, and a slot that stopped holding the app between
+     * the read and the write is left alone.
+     */
     fun rename(app: AppInfo, newLabel: String) {
-        settings.setRenameLabel(app.key, newLabel.trim())
+        val trimmed = newLabel.trim()
+        settings.setRenameLabel(app.key, trimmed)
+        val shown = RenamePropagator.displayLabel(trimmed, app.originalLabel)
+        val slots = (1..SettingsRepository.MAX_SLOTS).associateWith(settings::getSlot)
+        RenamePropagator.propagate(slots, app.key, shown).forEach { (slot, entry) ->
+            val current = settings.getSlot(slot)
+            if (RenamePropagator.holdsSameItem(entry, current)) {
+                settings.setSlot(slot, current.copy(label = entry.label))
+            }
+        }
         refresh()
     }
 }

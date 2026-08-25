@@ -122,6 +122,16 @@ class AppPickerActivity : AppCompatActivity() {
                     finish()
                 }
             }
+            // Renaming the slot's app is handled back in the caller, where the
+            // rename dialog and propagation live.
+            if (intent.getBooleanExtra(EXTRA_ALLOW_RENAME, false)) {
+                addRow(getString(R.string.action_change_label)) {
+                    setResult(RESULT_OK, Intent()
+                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                        .putExtra(EXTRA_RENAME, true))
+                    finish()
+                }
+            }
             if (intent.getIntExtra(EXTRA_FOLDER_OPTIONS_ID, -1) >= 0) {
                 addRow(getString(R.string.picker_folder_options)) {
                     setResult(RESULT_OK, Intent()
@@ -202,6 +212,8 @@ class AppPickerActivity : AppCompatActivity() {
         const val EXTRA_MOVE_UP = "move_up"
         const val EXTRA_ALLOW_REARRANGE = "allow_rearrange"
         const val EXTRA_REARRANGE = "rearrange"
+        const val EXTRA_ALLOW_RENAME = "allow_rename"
+        const val EXTRA_RENAME = "rename"
         const val EXTRA_FOLDER_OPTIONS_ID = "folder_options_id"
         const val EXTRA_FOLDER_OPTIONS = "folder_options"
     }

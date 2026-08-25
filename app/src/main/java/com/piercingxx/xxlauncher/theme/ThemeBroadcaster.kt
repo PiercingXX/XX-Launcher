@@ -57,6 +57,7 @@ object ThemeBroadcaster {
         "com.piercingxx.xxphone",
         "com.piercingxx.vitals",
         "com.piercingxx.xxdrive",
+        "com.piercingxx.xxcalculator",
     )
 
     /** One theme-changed delivery: what goes into the [Intent] for [targetPackage]. */

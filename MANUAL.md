@@ -3,10 +3,13 @@
 A complete technical reference for the codebase: what every file does, how the
 data flows, and a full audit of dead code, defects, and hygiene issues.
 
-**Audited at:** commit `d5bbf4d` ("PiercingXX Launcher v0.7") — 2026-08-02
+**Audited at:** commit `d5bbf4d` ("PiercingXX Launcher v0.7") — 2026-08-02.
+§10 is that audit and stays as written; every other section is kept current
+against the tree, which has since taken the `com.piercingxx.xxlauncher`
+rename, the toolchain bump, the theme-sync sender, and home-slot renaming.
 **Status:** audit complete; all findings in §10.1–10.2 fixed in the working tree
 **App version:** `0.7` (`versionCode 70`)
-**Toolchain:** AGP 8.5.0, Kotlin 1.9.24, Gradle 8.7, JDK 17, `compileSdk`/`targetSdk` 34, `minSdk` 24
+**Toolchain:** AGP 8.9.1, Kotlin 2.1.20, Gradle 8.11.1, JDK 17+ to build (21 in practice), `jvmTarget` 17, `compileSdk`/`targetSdk` 35, `minSdk` 24
 
 ---
 
@@ -45,13 +48,17 @@ Interaction is gesture-driven:
 | Double-tap | Lock the screen (needs the accessibility service) |
 | Long-press home background | Open launcher settings |
 | Tap a slot | Launch the app, drop the folder open inline, or (empty slot) open the app picker |
-| Long-press a slot | Open the app picker for that slot (plus move, rearrange, folder options, new folder, and clear rows) |
+| Long-press a slot | Open the app picker for that slot (plus Change Label, move, rearrange, folder options, new folder, and clear rows) |
 | Long-press a drawer row | Item action menu (add to home, hide, pin, rename, folder, uninstall…) |
 
 Settings → Gestures → "Gestures" shows this table in-app.
 
 The app is self-contained. The **only** outbound network request in the entire
 codebase is the Open-Meteo weather lookup in `WeatherHelper.kt`.
+
+It is also the family's theme sender: every theme change broadcasts
+`xx.launcher.THEME_CHANGED` to the nine PiercingXX apps, which repaint to
+match. See `ThemeBroadcaster.kt` in §6. That is on-device IPC, not network.
 
 ---
 
@@ -71,11 +78,13 @@ codebase is the Open-Meteo weather lookup in `WeatherHelper.kt`.
 ./gradlew installDebug
 ```
 
-There is no system JDK on the development box; builds use the Temurin 17
-install directly:
+There is a system JDK now (Temurin 17.0.20.1 on `PATH`), but the family
+builds under Temurin 21 — AGP 8.9.1 is happy on either, and `jvmTarget` stays
+17 regardless:
 
 ```sh
-JAVA_HOME=~/.jdks/jdk-17.0.20+8 ./gradlew installDebug
+export ANDROID_HOME=$HOME/Android/Sdk
+JAVA_HOME=~/tools/jdk-21.0.12.1+1 ./gradlew installDebug
 ```
 
 `local.properties` (git-ignored) must point at the Android SDK:
@@ -100,11 +109,12 @@ adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.piercingxx
 
 ### Signing
 
-`app/debug.keystore` is committed deliberately (see `.gitignore`) so every
-machine produces an identically-signed debug build and `installDebug` never
-hits a signature conflict. This is the standard Android debug keystore
-(`android` / `androiddebugkey`) — it carries no secret and cannot sign a
-release. There is no release signing config; `assembleRelease` produces an
+`app/debug.keystore` used to be committed so every machine produced an
+identically-signed debug build. It is gone: `.gitignore` now says
+`*.keystore` and no signing material lives in the repo, so debug builds carry
+whichever `~/.android/debug.keystore` AGP generated on the machine. A
+different machine means a signature conflict on `installDebug` — uninstall
+first. There is still no release signing config; `assembleRelease` produces an
 unsigned APK with `minifyEnabled false`.
 
 ---
@@ -124,20 +134,19 @@ XX-Launcher/
 ├── docs/images/              README screenshots
 └── app/
     ├── build.gradle          module config + dependencies
-    ├── debug.keystore        committed debug signing key
     ├── proguard-rules.pro    empty (release is not minified)
     └── src/
         ├── main/
         │   ├── AndroidManifest.xml
-        │   ├── java/com/launcher/…   (20 Kotlin files)
+        │   ├── java/com/piercingxx/xxlauncher/…   (24 Kotlin files)
         │   └── res/                  (layouts, values, xml, anim, font, drawable)
-        ├── test/java/com/launcher/       4 JVM unit-test classes
-        └── androidTest/java/com/launcher/ 2 instrumented test classes
+        ├── test/java/com/piercingxx/xxlauncher/       6 JVM unit-test classes
+        └── androidTest/java/com/piercingxx/xxlauncher/ 2 instrumented test classes
 ```
 
-Source size: **~2,800 lines of Kotlin** across 20 files plus ~700 lines of
+Source size: **~5,200 lines of Kotlin** across 24 files plus ~870 lines of
 resource XML. `.gradle/` and `app/build/` are generated, git-ignored, and
-account for essentially all of the repository's ~80 MB working-tree footprint.
+account for essentially all of the repository's working-tree footprint.
 
 ---
 
@@ -285,12 +294,12 @@ scale range) before anything is written.
 
 ### `com.piercingxx.xxlauncher` (root)
 
-#### `LauncherApplication.kt` (27 lines)
+#### `LauncherApplication.kt` (30 lines)
 Holds the four repositories as `by lazy` singletons and applies the persisted
 night mode on process start. `LauncherApplication.from(context)` is the
 accessor used everywhere.
 
-#### `MainActivity.kt` (~500 lines)
+#### `MainActivity.kt` (~700 lines)
 The home screen and the HOME intent target.
 
 - **Rendering** — `renderHomeSlots()` clears and rebuilds `homeSlotsContainer`,
@@ -322,7 +331,7 @@ The home screen and the HOME intent target.
   "Open app drawer" and "Open launcher settings" are registered as custom
   accessibility actions on the home container.
 
-#### `AppDrawerActivity.kt` (~390 lines)
+#### `AppDrawerActivity.kt` (~400 lines)
 A translucent bottom sheet with a bottom-anchored search field.
 
 - The top ~15 % of the screen (`topSpacer`) is left transparent; tapping it
@@ -344,12 +353,19 @@ A translucent bottom sheet with a bottom-anchored search field.
 - `sortApps()` implements the five sort modes; only `default` preserves the
   user's manual pinned order.
 
-#### `AppPickerActivity.kt` (110 lines)
+#### `AppPickerActivity.kt` (~220 lines)
 A themed dialog-style list used for three jobs: choosing a home-slot target
 (apps + folders + "clear"), choosing a swipe-gesture target, and choosing a
 widget tap action. The caller distinguishes them via the `EXTRA_ALLOW_FOLDERS`
 / `EXTRA_ALLOW_CLEAR` / `EXTRA_CLEAR_LABEL` extras and reads the selection back
 out of the result intent.
+
+It also carries the home-slot long-press rows, each gated by its own
+`EXTRA_ALLOW_*` flag and each answered by an `EXTRA_*` in the result rather
+than acted on here: move up/down, Rearrange, **Change Label**, folder options,
+and clear. The rename row is deliberately a result, not an action — the rename
+dialog and its propagation live back in `MainActivity` /
+`ItemActionMenu.showRenameForSlot()`, where the app list is.
 
 #### `SettingsActivity.kt` (~430 lines)
 Hosts `SettingsFragment : PreferenceFragmentCompat` over `R.xml.preferences`.
@@ -394,8 +410,19 @@ Typed accessors over the prefs file, plus the `SlotEntry` data class. Every
 property is a `var` with a getter/setter pair; there is no caching, so the
 settings UI and the repositories can never disagree.
 
-#### `AppDatabase.kt` (~140 lines)
+#### `AppDatabase.kt` (~120 lines)
 Room entities, DAOs, migrations, and the double-checked singleton.
+
+#### `RenamePropagator.kt` (61 lines)
+Pure label-propagation rules for renames, and the reason a rename shows up in
+the same place everywhere. A rename is stored once in the rename map, keyed
+like `AppInfo.key`, but every home `SlotEntry` also carries its own label copy
+from pick time; these helpers keep the copies in agreement across home,
+drawer, search, and folders. A blank rename clears the override and restores
+the app's real label. `holdsSameItem()` is the guard `MainActivity`'s async
+label refresh re-checks before writing, so a rename, move, or clear landing
+mid-lookup cannot drop the slot's old occupant on top of its replacement.
+No Android imports, so it is unit-tested directly.
 
 #### `DefaultLayoutSeeder.kt` (~260 lines)
 Builds the out-of-the-box home screen on first launch:
@@ -429,7 +456,7 @@ folder's last member deletes the folder and clears any slot pointing at it.
 
 ### `com.piercingxx.xxlauncher.menu`
 
-#### `ItemActionMenu.kt` (~440 lines)
+#### `ItemActionMenu.kt` (~630 lines)
 Every long-press action sheet. Menu contents are assembled conditionally: app
 info, change label, "Add to Home Screen" (first empty visible slot, growing
 the slot row up to the maximum of 8 when full), hide/show, and "Disable
@@ -437,6 +464,12 @@ for…" always; pin/unpin, move up/down, and "Add to Folder" only for drawer
 rows; folder-member reordering,
 "Rearrange Apps", and "Remove from Folder" only inside a folder; delete
 shortcut or uninstall last.
+
+`showRenameForSlot()` is the home-slot half of "Change Label": it resolves a
+`SlotEntry` back to its drawer row through `RenamePropagator.renameKey()` so
+the rename runs through `AppRepository.rename()` and lands everywhere. If the
+app list has not loaded yet it writes the rename label straight to prefs and
+refreshes — the home screen's own label pass picks it up on the next render.
 
 `showRearrangeDialog()` is the most involved: it rebuilds its rows in place
 after every move so the sheet stays open for a run of adjustments, dims rather
@@ -446,11 +479,29 @@ than hides the end-of-list arrows so row widths stay stable, and only the
 
 ### `com.piercingxx.xxlauncher.theme`
 
-#### `ThemeManager.kt` (77 lines)
-Six built-in presets in display order, plus a `custom` mode whose text colour
-is chosen by luminance. `applyWallpaper()` mirrors the background colour onto
-the system wallpaper as a 1×1 bitmap so app-switch animations blend with the
-launcher. `setAppearanceMode()` drives `AppCompatDelegate` night mode.
+#### `ThemeManager.kt` (87 lines)
+Seven built-in presets in display order — AMOLED Night, Graphite, Forest
+Night, Ocean Drift, Burgundy, Paper, Mist, per BRAND-GUIDE §3.3 — plus a
+`custom` mode whose text colour is chosen by luminance (>182 → ink).
+`applyWallpaper()` mirrors the background colour onto the system wallpaper as a
+1×1 bitmap so app-switch animations blend with the launcher.
+`setAppearanceMode()` drives `AppCompatDelegate` night mode. `publish()` hands
+the effective theme to `ThemeBroadcaster`; call it after every change that
+moves the theme, and it also runs once from `LauncherApplication` on start so
+freshly installed or rebooted family apps converge.
+
+#### `ThemeBroadcaster.kt` (96 lines)
+Sender side of the family theme-sync contract. Broadcasts
+`xx.launcher.THEME_CHANGED` with `THEME_NAME` (the preset *display* name, or
+`"Custom"`) and `BACKGROUND` (the resolved ARGB, always present — the only way
+a receiver can honour Custom). Manifest receivers stopped getting implicit
+broadcasts at Android O, so one explicit copy goes out per package via
+`Intent.setPackage`, to the nine family apps in `FAMILY_PACKAGES`. Absent
+packages drop it; there is no permission on the contract and no reply.
+`payloads()` is the pure fan-out, so plain JUnit covers the mapping and the
+per-package delivery without Robolectric — only `broadcast()` touches the
+platform. `DISPLAY_NAMES` and `ThemeManager.presets` share their keys and
+have to change together.
 
 #### `FontHelper.kt` (~130 lines)
 Font keys, a process-wide typeface cache, recursive typeface application over a
@@ -493,7 +544,7 @@ Versioned JSON export/import. See §5.3.
 
 ### `com.piercingxx.xxlauncher.accessibility` / `com.piercingxx.xxlauncher.notification`
 
-#### `GestureAccessibilityService.kt` (40 lines)
+#### `GestureAccessibilityService.kt` (46 lines)
 Exists only so `performGlobalAction` is available for lock-screen and recents.
 It ignores every event and does not retrieve window content
 (`canRetrieveWindowContent="false"`).
@@ -540,7 +591,7 @@ Android's; swipes elsewhere belong to the launcher.
 | `anim/slide_up.xml`, `slide_down.xml` | Drawer open/close |
 | `anim/slide_in_left.xml`, `slide_in_right.xml` | Swipe-launch directional animations |
 | `font/*.ttf` | JetBrains Mono, JetBrains Mono Nerd, Space Mono |
-| `drawable/ic_launcher.xml`, `mipmap-anydpi-v26/ic_launcher.xml` | Adaptive launcher icon |
+| `drawable/ic_launcher_foreground.xml`, `mipmap-anydpi-v26/ic_launcher.xml` | Adaptive launcher icon (the XX logomark on the Ink ground) |
 
 Note that `TextAppearance.Launcher.SearchResult` is the only text appearance
 still referenced from a layout; every other text style is applied
@@ -580,14 +631,16 @@ app routes them there on first use (`ACTION_ACCESSIBILITY_SETTINGS`,
 
 ## 9. Test suite
 
-### JVM unit tests — `app/src/test/` (4 classes, 20 tests)
+### JVM unit tests — `app/src/test/` (6 classes, 38 tests)
 
-| Class | Covers |
-|---|---|
-| `AppInfoMatchTest` | Search matching: case-insensitivity, separator and diacritic stripping, blank query, renamed labels |
-| `DefaultLayoutSeederTest` | Seeding plan against a fake resolver: full install, nothing installed, package fallbacks, empty-folder skipping |
-| `MoveInListTest` | `moveInList` swap semantics, end-of-list failure, immutability |
-| `WeatherHelperTest` | Open-Meteo payload parsing and weather-code mapping |
+| Class | Tests | Covers |
+|---|---|---|
+| `AppInfoMatchTest` | 6 | Search matching: case-insensitivity, separator and diacritic stripping, blank query, renamed labels |
+| `DefaultLayoutSeederTest` | 4 | Seeding plan against a fake resolver: full install, nothing installed, package fallbacks, empty-folder skipping |
+| `MoveInListTest` | 5 | `moveInList` swap semantics, end-of-list failure, immutability |
+| `RenamePropagatorTest` | 12 | Rename keys for apps, shortcuts and folders; blank-resets-to-real-label; the `holdsSameItem` guard against a stale async label write |
+| `ThemeBroadcasterTest` | 6 | Preset key → display name, the Custom fallback, the action/extra constants against the family receivers, and one payload per family package |
+| `WeatherHelperTest` | 5 | Open-Meteo payload parsing and weather-code mapping |
 
 These run anywhere. `org.json:json` is a test dependency because the Android
 SDK's `org.json` stub throws on every call.
@@ -602,8 +655,9 @@ SDK's `org.json` stub throws on every call.
 `FolderOrderTest` needs at least three launchable apps on the device and
 cleans up a leftover test folder from an interrupted run before starting.
 
-**Not covered by tests:** `BackupManager` round-trips, `ItemActionMenu`,
-`WidgetContainer`, theming, and font import.
+**Not covered by tests:** `BackupManager` round-trips, `ItemActionMenu`'s
+dialogs, `WidgetContainer`, theming, and font import. `ThemeBroadcaster`'s actual
+`sendBroadcast` is untested too — only the pure fan-out under it is.
 
 ---
 
@@ -664,15 +718,15 @@ alone. They are recorded so the next audit does not re-litigate them.
 | H-1 | `overridePendingTransition` is deprecated (2 warnings). The replacement, `overrideActivityTransition`, is API 34+ while `minSdk` is 24, and for the drawer's *same-task* transitions the deprecated call is still the only thing that works across the supported range. **Left as-is.** |
 | H-2 | `ClickableViewAccessibility` lint (4). `MainActivity`'s touch listener is a gesture detector, and the same actions are already exposed as explicit `ViewCompat` accessibility actions; the drawer's listener returns `false` and never consumes a click. **Suppressed with a justifying comment** rather than adding a fake `performClick()`. |
 | H-3 | `LockedOrientationActivity` / `DiscouragedApi` lint (3+3): the home, picker, and settings activities are portrait-locked. That is a deliberate product decision for a phone launcher. **Left as-is.** |
-| H-4 | 11 `GradleDependency` warnings (AppCompat 1.6.1→1.7.1, Room 2.6.1→2.8.4, Material 1.11→1.14, coroutines 1.7.3→1.9.0, etc.). Dependency upgrades are a separate, testable change, not a cleanup. **Left as-is — worth scheduling.** |
+| H-4 | 11 `GradleDependency` warnings (AppCompat 1.6.1→1.7.1, Room 2.6.1→2.8.4, Material 1.11→1.14, coroutines 1.7.3→1.9.0, etc.). Dependency upgrades are a separate, testable change, not a cleanup. **Left as-is — worth scheduling.** *Since:* Room moved to 2.7.2 with the toolchain bump; AppCompat, Material and coroutines are still on the audited versions. |
 | H-5 | `KaptUsageInsteadOfKsp`: Room still uses kapt. Migrating to KSP is a real build-speed win and a self-contained change. **Left as-is — worth scheduling.** |
 | H-6 | `SettingsActivity` imports `androidx.recyclerview.widget.RecyclerView` but RecyclerView is not a declared dependency — it arrives transitively through `androidx.preference`. It compiles and runs, but a preference-library bump could break it. **Documented, not changed.** |
 | H-7 | **Gson ignores Kotlin default values.** Gson constructs `BackupData` through `Unsafe`, bypassing the constructor, so a field missing from the JSON becomes `null` even though the Kotlin type is non-null — not the declared default. In practice a malformed backup fails inside the caller's `runCatching` and surfaces as "Restore failed", so the blast radius is a rejected import rather than a crash. A proper fix means moving to `kotlinx.serialization` or adding explicit null handling. **Documented, not changed.** |
 | H-8 | `AppRepository` never unregisters its `LauncherApps.Callback` and never cancels its `CoroutineScope`. This is correct: the repository is `Application`-scoped and lives for the process. |
 | H-9 | `accessibility_config.xml` requests `typeWindowStateChanged` events that the service discards. Harmless (it cannot retrieve window content), but it does mean the system delivers events for nothing. Some OEM builds refuse to list a service that requests no event types, so this is left alone. |
 | H-10 | `MainActivity` uses ViewBinding; every other activity uses `findViewById`. Inconsistent but not wrong. |
-| H-11 | `app/debug.keystore` is committed. This is the public, universally-known Android debug keystore — no secret is exposed and it cannot sign a release build. **Intentional**, per the `.gitignore` comment. |
-| H-12 | `.gradle/` and `app/build/` (~80 MB) are generated and git-ignored. Removable at any time with `./gradlew clean`; they are not tracked and never entered version control. |
+| H-11 | `app/debug.keystore` is committed. This is the public, universally-known Android debug keystore — no secret is exposed and it cannot sign a release build. **Intentional**, per the `.gitignore` comment. *Since:* reversed. The keystore was removed from the repo and `.gitignore` now excludes `*.keystore` outright. See §2, Signing. |
+| H-12 | `.gradle/` and `app/build/` are generated and git-ignored. Removable at any time with `./gradlew clean`; they are not tracked and never entered version control. |
 | H-13 | `MainActivity.seedFirstRunIfNeeded()` sets `firstRunSeeded = true` *before* seeding, so a failed seed never retries. Deliberate: retrying on every launch would be worse than an empty home screen. |
 | H-14 | `preferences.xml` hardcodes English preference titles instead of using `@string` resources, while `strings.xml` is fully populated for everything else. Not an error — the app ships English-only — but it is the one place localisation would break. |
 
@@ -710,9 +764,13 @@ before shipping**, since `FolderOrderTest` opens the real database and is the
 test that would catch a bad migration:
 
 ```sh
-JAVA_HOME=~/.jdks/jdk-17.0.20+8 ./gradlew connectedDebugAndroidTest \
+JAVA_HOME=~/tools/jdk-21.0.12.1+1 ./gradlew connectedDebugAndroidTest \
   -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 ```
+
+Still not run. A Pixel 6 under GrapheneOS now carries the launcher, but the
+instrumented suite has not been pointed at it, so `MIGRATION_2_3` remains
+statically checked only.
 
 ### 10.5 Files deleted
 

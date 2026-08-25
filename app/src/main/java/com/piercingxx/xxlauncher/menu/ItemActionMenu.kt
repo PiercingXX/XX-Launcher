@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.R
 import com.piercingxx.xxlauncher.data.AppInfo
 import com.piercingxx.xxlauncher.data.AppRepository
+import com.piercingxx.xxlauncher.data.RenamePropagator
 import com.piercingxx.xxlauncher.data.SettingsRepository
 import com.piercingxx.xxlauncher.data.SlotEntry
 import com.piercingxx.xxlauncher.folder.FolderManager
@@ -69,9 +70,9 @@ class ItemActionMenu(
 
         items.add(context.getString(R.string.action_change_label) to {
             showRenameDialog(app.label) { newName ->
-                // Blank resets to the real label.
-                settings.setRenameLabel(app.key, newName)
-                appRepo.refresh()
+                // Blank resets to the real label; the repository rewrites any
+                // home slot holding the app too.
+                appRepo.rename(app, newName)
                 onChanged()
             }
         })
@@ -212,6 +213,28 @@ class ItemActionMenu(
         )
         context.showToast(context.getString(R.string.toast_added_to_home))
         onChanged()
+    }
+
+    /**
+     * Rename entry point for an occupied home app slot, where only a
+     * [SlotEntry] is known. Resolves the slot back to its drawer row so the
+     * rename runs through [AppRepository.rename] and propagates everywhere;
+     * if the app list has not loaded yet, the rename is stored anyway and the
+     * home screen's label refresh picks it up on the next render.
+     */
+    fun showRenameForSlot(entry: SlotEntry, onChanged: () -> Unit = {}) {
+        val key = RenamePropagator.renameKey(entry) ?: return
+        showRenameDialog(entry.label) { newName ->
+            val app = appRepo.apps.value?.firstOrNull { it.key == key }
+            if (app != null) {
+                // Blank resets to the real label.
+                appRepo.rename(app, newName)
+            } else {
+                settings.setRenameLabel(key, newName.trim())
+                appRepo.refresh()
+            }
+            onChanged()
+        }
     }
 
     fun showFolderMenu(

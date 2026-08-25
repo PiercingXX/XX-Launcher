@@ -26,6 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.accessibility.GestureAccessibilityService
 import com.piercingxx.xxlauncher.data.AppRepository
 import com.piercingxx.xxlauncher.data.DefaultLayoutSeeder
+import com.piercingxx.xxlauncher.data.RenamePropagator
 import com.piercingxx.xxlauncher.data.SettingsRepository
 import com.piercingxx.xxlauncher.data.SlotEntry
 import com.piercingxx.xxlauncher.databinding.ActivityHomeBinding
@@ -81,6 +82,13 @@ class MainActivity : AppCompatActivity() {
         when {
             data.getBooleanExtra(AppPickerActivity.EXTRA_REARRANGE, false) ->
                 showSlotRearrangeDialog()
+
+            data.getBooleanExtra(AppPickerActivity.EXTRA_RENAME, false) -> {
+                val entry = settings.getSlot(slot)
+                if (!entry.isEmpty && !entry.isFolder) {
+                    itemMenu.showRenameForSlot(entry) { renderHomeSlots() }
+                }
+            }
 
             data.getBooleanExtra(AppPickerActivity.EXTRA_FOLDER_OPTIONS, false) -> {
                 val entry = settings.getSlot(slot)
@@ -278,8 +286,14 @@ class MainActivity : AppCompatActivity() {
                 val entry = settings.getSlot(slot)
                 if (entry.isEmpty) continue
                 val resolved = resolveSlotLabel(entry) ?: continue
-                if (resolved == entry.label) continue
-                settings.setSlot(slot, entry.copy(label = resolved))
+                // The name lookup suspends, so re-read before writing: a
+                // rename, move, or clear may have landed on this slot in the
+                // meantime, and writing the pre-lookup copy back would move
+                // the slot's old occupant on top of whatever took its place.
+                val current = settings.getSlot(slot)
+                if (!RenamePropagator.holdsSameItem(entry, current)) continue
+                if (resolved == current.label) continue
+                settings.setSlot(slot, current.copy(label = resolved))
                 if (view.isAttachedToWindow) {
                     view.text = resolved
                     view.contentDescription =
@@ -345,6 +359,8 @@ class MainActivity : AppCompatActivity() {
             .putExtra(AppPickerActivity.EXTRA_SLOT_INDEX, slot)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_FOLDERS, true)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_CLEAR, filled)
+            // Folder slots rename through Folder Options instead.
+            .putExtra(AppPickerActivity.EXTRA_ALLOW_RENAME, filled && !entry.isFolder)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_MOVE_UP, filled && slot > 1)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_MOVE_DOWN, filled && slot < visible)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_REARRANGE, filledCount >= 2)
