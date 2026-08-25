@@ -54,7 +54,7 @@ object ThemeBroadcaster {
         "com.piercingxx.calendar",
         "com.piercingxx.xxclock",
         "com.piercingxx.xxnote",
-        "com.piercingxx.xxphone",
+        "com.piercingxx.xxdialer",
         "com.piercingxx.vitals",
         "com.piercingxx.xxdrive",
         "com.piercingxx.xxcalculator",
