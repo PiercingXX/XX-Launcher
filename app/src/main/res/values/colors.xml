@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#333333</color>
-    <color name="default_home_background">#333333</color>
+    <!-- BRAND-GUIDE.md §3: Ink is the ground. AMOLED black is the family
+         default; ThemeManager's presets retheme at runtime. -->
+    <color name="ic_launcher_background">#000000</color>
+    <color name="default_home_background">#000000</color>
     <color name="default_home_text">#FFFFFF</color>
 </resources>
