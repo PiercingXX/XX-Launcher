@@ -111,6 +111,10 @@ class SettingsActivity : AppCompatActivity() {
                         // Runtime permissions and custom fonts are not restored.
                         requireContext().showToast(getString(R.string.restore_caveats))
                         app.appRepo.refresh()
+                        // The restore may have swapped the theme; re-publish it
+                        // to the family apps (BackupManager itself is
+                        // context-free, so the broadcast fires here).
+                        app.themeManager.publish()
                     },
                     onFailure = { requireContext().showToast(getString(R.string.toast_restore_failed)) },
                 )
@@ -293,6 +297,7 @@ class SettingsActivity : AppCompatActivity() {
                     strip.selectedKey = key
                     strip.refresh()
                     app.themeManager.applyWallpaper()
+                    app.themeManager.publish()
                 }
                 strip.onCustomSelected = { showCustomColorDialog() }
             }
@@ -438,6 +443,7 @@ class SettingsActivity : AppCompatActivity() {
                         app.settings.customBgColor = (0xFF000000L or parsed).toInt()
                         app.settings.themePreset = "custom"
                         app.themeManager.applyWallpaper()
+                        app.themeManager.publish()
                         findPreference<ThemePreviewPreference>("theme_strip")?.let {
                             it.selectedKey = "custom"
                             it.refresh()

@@ -52,6 +52,16 @@ class ThemeManager(private val context: Context, private val settingsRepo: Setti
     }
     
     /**
+     * Publishes the current effective theme to the family apps (the sender
+     * side of the theme sync contract — see [ThemeBroadcaster]). Call after
+     * every point where the effective theme changes, and once on startup so
+     * freshly installed/rebooted family apps converge.
+     */
+    fun publish() {
+        ThemeBroadcaster.broadcast(context, settingsRepo.themePreset, getCurrentColors())
+    }
+
+    /**
      * Mirrors the theme background onto the system wallpaper so app-switch
      * animations blend seamlessly with the launcher.
      */

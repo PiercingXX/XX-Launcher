@@ -18,6 +18,9 @@ class LauncherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         themeManager.setAppearanceMode(settings.appearanceMode)
+        // Publish the active theme once at startup so freshly installed or
+        // rebooted family apps converge without waiting for a manual change.
+        themeManager.publish()
     }
 
     companion object {
