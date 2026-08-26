@@ -61,6 +61,7 @@ object ThemeBroadcaster {
         "com.piercingxx.vitals",
         "com.piercingxx.xxdrive",
         "com.piercingxx.xxcalculator",
+        "com.xx.weather",
     )
 
     /** One theme-changed delivery: what goes into the [Intent] for [targetPackage]. */
@@ -84,8 +85,11 @@ object ThemeBroadcaster {
 
     /**
      * Sends one explicit [ACTION_THEME_CHANGED] broadcast per family package.
-     * Restricted to apps that hold [PERMISSION_THEME_SYNC] (signature). Absent
-     * packages simply drop the broadcast.
+     * Not filtered by [PERMISSION_THEME_SYNC] on the *receiver*: Weather,
+     * Vitals, and Nope-Mode are signed with different debug keys, so they
+     * cannot hold a signature permission the launcher defines. Senders are
+     * still gated by each receiver's `android:permission` (the launcher
+     * holds that permission). Absent packages simply drop the broadcast.
      */
     fun broadcast(context: Context, presetKey: String, colors: ThemeColors) {
         payloads(presetKey, colors).forEach { payload ->
@@ -94,7 +98,6 @@ object ThemeBroadcaster {
                     .setPackage(payload.targetPackage)
                     .putExtra(EXTRA_THEME_NAME, payload.themeName)
                     .putExtra(EXTRA_BACKGROUND, payload.backgroundColor),
-                PERMISSION_THEME_SYNC,
             )
         }
     }

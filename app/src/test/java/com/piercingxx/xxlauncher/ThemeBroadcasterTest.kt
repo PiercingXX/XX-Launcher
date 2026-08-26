@@ -75,6 +75,7 @@ class ThemeBroadcasterTest {
             "com.piercingxx.vitals",
             "com.piercingxx.xxdrive",
             "com.piercingxx.xxcalculator",
+            "com.xx.weather",
         )
         assertEquals(expected, ThemeBroadcaster.FAMILY_PACKAGES)
         assertEquals(expected.size, ThemeBroadcaster.FAMILY_PACKAGES.distinct().size)
