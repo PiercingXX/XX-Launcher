@@ -104,7 +104,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
             data.getBooleanExtra(AppPickerActivity.EXTRA_CLEARED, false) ->
-                settings.clearSlot(slot)
+                settings.removeSlot(slot)
 
             data.hasExtra(AppPickerActivity.EXTRA_FOLDER_ID) -> {
                 val folderId = data.getIntExtra(AppPickerActivity.EXTRA_FOLDER_ID, -1)
@@ -349,7 +349,7 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, AppPickerActivity::class.java)
             .putExtra(AppPickerActivity.EXTRA_SLOT_INDEX, slot)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_FOLDERS, true)
-            .putExtra(AppPickerActivity.EXTRA_ALLOW_CLEAR, filled)
+            .putExtra(AppPickerActivity.EXTRA_ALLOW_CLEAR, true)
             // Folder slots rename through Folder Options instead.
             .putExtra(AppPickerActivity.EXTRA_ALLOW_RENAME, filled && !entry.isFolder)
             .putExtra(AppPickerActivity.EXTRA_ALLOW_MOVE_UP, filled && slot > 1)
@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val folders = LauncherApplication.from(this@MainActivity).folders
             if (folders.getFolder(folderId) == null) {
-                settings.clearSlot(slot)
+                settings.removeSlot(slot)
                 renderHomeSlots()
                 return@launch
             }

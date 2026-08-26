@@ -213,8 +213,29 @@ class SettingsRepository(context: Context) {
 
     fun clearSlot(slot: Int) = setSlot(slot, SlotEntry())
 
-    /** Clears every home slot pointing at the given folder (after deletion). */
+    /**
+     * Deletes a visible home slot and shifts later slots up, shrinking
+     * [slotCount]. "Clear slot" uses this so the row disappears instead of
+     * turning into the empty "· · ·" placeholder.
+     */
+    fun removeSlot(slot: Int) {
+        val count = slotCount.coerceIn(0, MAX_SLOTS)
+        if (slot !in 1..count) {
+            if (slot in 1..MAX_SLOTS) clearSlot(slot)
+            return
+        }
+        val next = SlotOps.removeAt((1..count).map { getSlot(it) }, slot)
+        for (i in 1..count) {
+            setSlot(i, next.getOrElse(i - 1) { SlotEntry() })
+        }
+        slotCount = next.size
+    }
+
+    /** Drops every visible home slot pointing at the given folder (after deletion). */
     fun clearSlotsForFolder(folderId: Int) {
+        for (slot in slotCount.coerceIn(0, MAX_SLOTS) downTo 1) {
+            if (getSlot(slot).folderId == folderId) removeSlot(slot)
+        }
         for (slot in 1..MAX_SLOTS) {
             if (getSlot(slot).folderId == folderId) clearSlot(slot)
         }

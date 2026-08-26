@@ -248,10 +248,10 @@ class AppRepository(
         }
         settings.pinnedApps = settings.pinnedApps.filterNot(::matches)
         settings.hiddenApps = settings.hiddenApps.filterNot(::matches).toSet()
-        for (slot in 1..SettingsRepository.MAX_SLOTS) {
+        for (slot in SettingsRepository.MAX_SLOTS downTo 1) {
             val entry = settings.getSlot(slot)
             if (!entry.isFolder && entry.packageName == packageName && entry.userToken == userToken) {
-                settings.clearSlot(slot)
+                settings.removeSlot(slot)
             }
         }
         folders.removePackage(packageName, userToken)
