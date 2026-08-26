@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base launcher theme -->
-    <style name="Theme.Launcher" parent="Theme.Material3.DayNight.NoActionBar" tools:targetApi="q">
+    <style name="Theme.Launcher" parent="Theme.Material3.DayNight.NoActionBar" tools:targetApi="31">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">false</item>
@@ -11,6 +11,28 @@
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="homeBackgroundColor">@color/default_home_background</item>
         <item name="homeTextColor">@color/default_home_text</item>
+
+        <!-- Android 12+ starting window. The platform draws one for every cold
+             start and cannot be told not to; its defaults stamp the launcher
+             icon over a theme-derived ground. On a home screen that is the
+             worst place for it — the launcher cold-starts on boot and after
+             every memory kill, so the mark was the first thing the phone showed.
+             Ink ground and a transparent icon make it a frame of the same black
+             the home screen defaults to. The icon-background and branding slots
+             are the platform's other two ways to draw a mark, so they are
+             pinned shut rather than left to inherit.
+
+             The ground has to be a literal resource: ?attr/homeBackgroundColor
+             (which Theme.Launcher.Home uses for its window) is unresolvable
+             here — this window is drawn before any theme attribute of ours is
+             read, and a user-chosen home color is a runtime preference the
+             starting window can never see. Inherited by Theme.Launcher.Home,
+             .Drawer and .Dialog; Theme.Launcher.Settings parents Material
+             directly and repeats it. -->
+        <item name="android:windowSplashScreenBackground">@color/default_home_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBrandingImage">@null</item>
     </style>
 
     <!-- Drawer: translucent so the home screen shows through the top strip;
@@ -27,11 +49,19 @@
         <item name="android:statusBarColor">?attr/homeBackgroundColor</item>
     </style>
 
-    <!-- Settings theme -->
-    <style name="Theme.Launcher.Settings" parent="Theme.Material3.DayNight">
+    <!-- Settings theme. Named for the dot but NOT descended from Theme.Launcher
+         — the explicit parent is Material — so anything the base theme declares
+         has to be repeated here. SettingsActivity is exported, so it is a real
+         cold-start entry and needs the same empty starting window (see the
+         base theme for why these four attributes are the whole mechanism). -->
+    <style name="Theme.Launcher.Settings" parent="Theme.Material3.DayNight" tools:targetApi="31">
         <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
         <item name="homeBackgroundColor">@color/default_home_background</item>
         <item name="homeTextColor">@color/default_home_text</item>
+        <item name="android:windowSplashScreenBackground">@color/default_home_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBrandingImage">@null</item>
     </style>
 
     <!-- Dialog theme. Defines the launcher color attrs so launcher text
