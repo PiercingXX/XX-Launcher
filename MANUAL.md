@@ -189,9 +189,10 @@ Key design decisions:
   and synchronous. The database exists only for folders.
 - **Apps are identified by a string key**, not a component: `"package|userToken"`
   for apps, `"package|shortcutId|userToken"` for Android pinned shortcuts.
-  `userToken` is `"personal"` or `"managed"` — deliberately stable strings
-  rather than `UserHandle.toString()`, so state survives device transfers and
-  work-profile re-enrollment.
+  `userToken` is `"personal"` for this user and `u{serial}` for every other
+  profile (`"managed"` is still accepted and migrated). Serial numbers are
+  stable on-device; `"personal"`/`"managed"` remain the backup-portability
+  fallback when a matching profile is missing.
 - **Theming is applied imperatively**, not through the Android theme system.
   Every view gets `setTextColor` / `setBackgroundColor` from
   `ThemeManager.getCurrentColors()` and `applyLauncherFont()` walks view trees
@@ -210,7 +211,6 @@ MainActivity.onResume
   ├─ widgetContainer.rebuild()   re-read widget order, re-register receivers
   ├─ renderHomeSlots()       for slot in 1..slotCount:
   │                            read SlotEntry from prefs
-  │                            prune it if the package is gone
   │                            build a TextView, wire tap + long-press
   ├─ applyLauncherFont()     walk the tree, install the typeface
   └─ maybeShowDefaultLauncherPrompt()
@@ -267,26 +267,41 @@ preference widgets and older builds disagreed about the stored type. The
 | `folder_members` | composite PK (`folderId`, `appId`), plus `sortOrder` |
 
 `appId` is the app key described above. Members are resolved against
-`LauncherApps` at read time, so uninstalled apps are pruned from the table
-during `getMembers()` rather than needing an uninstall hook.
+`LauncherApps` at read time for labels only. A failed or empty lookup (locked
+work profile, quiet mode, binder error) keeps the stored row. Uninstalled
+packages are dropped from folders in `AppRepository.onPackageRemoved` via
+`FolderManager.removePackage`.
 
-`sortOrder` is normalised to `0..n-1` on every read, which both closes gaps
-left by removed members and gives pre-migration rows (all zero) a stable
-alphabetical order.
+`sortOrder` is normalised to `0..n-1` on every read so pre-migration rows
+(all zero) keep a stable alphabetical order.
 
 **Migrations:** `MIGRATION_1_2` adds `folder_members.sortOrder`.
 `MIGRATION_2_3` drops the unused `home_slots` table (see finding **D-1**).
+Both are exported on `AppDatabase` and exercised by `FolderMigrationTest`
+(instrumented): a hand-built v1 database with `folders`, `folder_members`
+(no `sortOrder`), and `home_slots` migrates to v3.
+
+User-profile tokens are `personal` for this user and `u{serial}` for every
+other profile. The old `"managed"` spelling still resolves to the first extra
+profile, and existing prefs/folder keys are rewritten to the serial token on
+first load.
 
 ### 5.3 Backup JSON
 
 `BackupManager` serialises every user-configurable value with Gson.
 `version` is checked for **exact** equality with `BACKUP_VERSION` (1) — an
-older or newer file is rejected outright rather than migrated.
+older or newer file is rejected outright rather than migrated. Missing
+collection fields on a v1 file (Gson leaves them `null`, ignoring Kotlin
+defaults) are coalesced to empty so import does not NPE.
 
-Folders are exported **by name**, not id, because ids are not stable across
-restores; import recreates folders by name and remaps slot references through
-a name→id map. The whole payload is validated (slot count, slot indices, text
-scale range) before anything is written.
+Folders are exported **by name**, not id. Import **replaces** live state:
+every folder is wiped and recreated, `rename_*` keys, widget tap overrides,
+and mute entries are replaced (mutes are stored as `"package|untilEpochMillis"`
+in `mutedApps`; files written before that field have none). Slots and
+hidden/pinned lists are rewritten from the file. Slot folder references are
+remapped through the new name→id map. After a successful import,
+`SettingsActivity` reapplies night mode and the 1×1 wallpaper and republishes
+the theme.
 
 ---
 
@@ -303,9 +318,10 @@ accessor used everywhere.
 The home screen and the HOME intent target.
 
 - **Rendering** — `renderHomeSlots()` clears and rebuilds `homeSlotsContainer`,
-  reading each `SlotEntry` from prefs. Slots whose package is no longer
-  installed are cleared in place. Rows are `WRAP_CONTENT` width so the tap
-  target hugs the label rather than spanning the screen.
+  reading each `SlotEntry` from prefs. Temporarily unresolvable packages
+  (locked work profile) stay on the slot; uninstall pruning is
+  `onPackageRemoved` only. Rows are `WRAP_CONTENT` width so the tap target
+  hugs the label rather than spanning the screen.
 - **Inline folders** — `toggleFolder()` inserts member rows *directly below*
   the folder's slot inside the same `LinearLayout`, at a smaller text size and
   with symmetric padding so centred rows stay centred. Because the container is
@@ -447,12 +463,14 @@ the I/O. Unresolvable apps are skipped and empty folders are never created.
 
 ### `com.piercingxx.xxlauncher.folder`
 
-#### `FolderManager.kt` (~220 lines)
+#### `FolderManager.kt`
 All folder operations, each on `Dispatchers.IO` and each returning a `Result`.
-`getMembers()` resolves member keys to live apps, prunes stale rows, and
-renumbers `sortOrder`. `moveInList()` is a free `internal` function (swap with
-neighbour, null at the ends) so it can be unit-tested directly. Removing a
-folder's last member deletes the folder and clears any slot pointing at it.
+`getMembers()` resolves member keys to live apps and renumbers `sortOrder`
+without deleting rows that fail to resolve. `removePackage()` is the uninstall
+path. `replaceAll()` is the backup-restore wipe-and-recreate. `moveInList()` is
+a free `internal` function (swap with neighbour, null at the ends) so it can
+be unit-tested directly. Removing a folder's last member deletes the folder
+and clears any slot pointing at it.
 
 ### `com.piercingxx.xxlauncher.menu`
 
@@ -490,14 +508,16 @@ the effective theme to `ThemeBroadcaster`; call it after every change that
 moves the theme, and it also runs once from `LauncherApplication` on start so
 freshly installed or rebooted family apps converge.
 
-#### `ThemeBroadcaster.kt` (96 lines)
+#### `ThemeBroadcaster.kt`
 Sender side of the family theme-sync contract. Broadcasts
 `xx.launcher.THEME_CHANGED` with `THEME_NAME` (the preset *display* name, or
 `"Custom"`) and `BACKGROUND` (the resolved ARGB, always present — the only way
 a receiver can honour Custom). Manifest receivers stopped getting implicit
 broadcasts at Android O, so one explicit copy goes out per package via
-`Intent.setPackage`, to the nine family apps in `FAMILY_PACKAGES`. Absent
-packages drop it; there is no permission on the contract and no reply.
+`Intent.setPackage`, to the nine family apps in `FAMILY_PACKAGES`, restricted
+by the signature permission `com.piercingxx.xxlauncher.permission.THEME_SYNC`.
+Family apps must `uses-permission` that name (same signing key) or they will
+not receive the broadcast. Absent packages drop it; there is no reply.
 `payloads()` is the pure fan-out, so plain JUnit covers the mapping and the
 per-package delivery without Robolectric — only `broadcast()` touches the
 platform. `DISPLAY_NAMES` and `ThemeManager.presets` share their keys and
@@ -539,8 +559,9 @@ unit-tested with the real `org.json` on the JVM.
 
 ### `com.piercingxx.xxlauncher.backup`
 
-#### `BackupManager.kt` (~220 lines)
-Versioned JSON export/import. See §5.3.
+#### `BackupManager.kt`
+Versioned JSON export/import. See §5.3. `parseBackupJson` / `normalized()` are
+`internal` so sparse v1 files and the mute list are JVM-testable.
 
 ### `com.piercingxx.xxlauncher.accessibility` / `com.piercingxx.xxlauncher.notification`
 
@@ -556,11 +577,12 @@ while the listener was down.
 
 ### `com.piercingxx.xxlauncher.util`
 
-#### `SystemActions.kt` (~270 lines)
-Context/Activity/View extensions: user-profile token serialisation, toasts,
+#### `SystemActions.kt`
+Context/Activity/View extensions: user-profile token serialisation
+(`personal` / `u{serial}`, with `"managed"` as a fallback), toasts,
 notification-drawer expansion (via reflection on `StatusBarManager` — there is
 no public API), dialer/camera/alarm/calendar/weather/web-search launchers,
-app-info and uninstall intents, install checks, e-ink detection (≤30 Hz
+app-info and uninstall intents, e-ink detection (≤30 Hz
 refresh disables animations), keyboard show/hide, and status/navigation bar
 visibility.
 
@@ -608,6 +630,7 @@ programmatically from `ThemeManager`.
 | `EXPAND_STATUS_BAR` | Swipe-down notification drawer |
 | `SET_WALLPAPER` | Mirror the theme colour onto the wallpaper |
 | `REQUEST_DELETE_PACKAGES` | "Uninstall" from the item action menu |
+| `com.piercingxx.xxlauncher.permission.THEME_SYNC` | Signature permission declared and held by the launcher; `sendBroadcast` requires receivers to hold it too |
 
 `<queries>` declares the intents the launcher resolves against under Android 11+
 package visibility: MAIN/LAUNCHER (which makes every launchable app visible),
@@ -631,33 +654,36 @@ app routes them there on first use (`ACTION_ACCESSIBILITY_SETTINGS`,
 
 ## 9. Test suite
 
-### JVM unit tests — `app/src/test/` (6 classes, 38 tests)
+### JVM unit tests — `app/src/test/`
 
-| Class | Tests | Covers |
-|---|---|---|
-| `AppInfoMatchTest` | 6 | Search matching: case-insensitivity, separator and diacritic stripping, blank query, renamed labels |
-| `DefaultLayoutSeederTest` | 4 | Seeding plan against a fake resolver: full install, nothing installed, package fallbacks, empty-folder skipping |
-| `MoveInListTest` | 5 | `moveInList` swap semantics, end-of-list failure, immutability |
-| `RenamePropagatorTest` | 12 | Rename keys for apps, shortcuts and folders; blank-resets-to-real-label; the `holdsSameItem` guard against a stale async label write |
-| `ThemeBroadcasterTest` | 6 | Preset key → display name, the Custom fallback, the action/extra constants against the family receivers, and one payload per family package |
-| `WeatherHelperTest` | 5 | Open-Meteo payload parsing and weather-code mapping |
+| Class | Covers |
+|---|---|
+| `AppInfoMatchTest` | Search matching: case-insensitivity, separator and diacritic stripping, blank query, renamed labels |
+| `AppKeyTest` | Two- and three-part keys, `managed` → serial rewrite, embedded swipe/widget user tokens |
+| `BackupDataTest` | Sparse v1 JSON does not NPE; mute list round-trips; restore payload is the file's keys only |
+| `DefaultLayoutSeederTest` | Seeding plan against a fake resolver: full install, nothing installed, package fallbacks, empty-folder skipping |
+| `MoveInListTest` | `moveInList` swap semantics, end-of-list failure, immutability |
+| `RenamePropagatorTest` | Rename keys for apps, shortcuts and folders; blank-resets-to-real-label; the `holdsSameItem` guard against a stale async label write |
+| `ThemeBroadcasterTest` | Preset key → display name, the Custom fallback, the action/extra/permission constants against the family receivers, and one payload per family package |
+| `WeatherHelperTest` | Open-Meteo payload parsing and weather-code mapping |
 
 These run anywhere. `org.json:json` is a test dependency because the Android
 SDK's `org.json` stub throws on every call.
 
-### Instrumented tests — `app/src/androidTest/` (2 classes, 7 tests)
+### Instrumented tests — `app/src/androidTest/`
 
 | Class | Covers |
 |---|---|
 | `LauncherSmokeTest` | Every activity launches; home renders `slotCount` rows; home is portrait-locked; drawer search field is shown; slot writes survive a fresh repository |
-| `FolderOrderTest` | Folder member ordering against the real on-device database — which also exercises the schema migration |
+| `FolderOrderTest` | Folder member ordering against the live on-device database (a fresh install creates v3; this is not a migration test) |
+| `FolderMigrationTest` | `MigrationTestHelper`: v1 `folders` / `folder_members` / `home_slots` → v3 keeps members, adds `sortOrder`, drops `home_slots` |
 
 `FolderOrderTest` needs at least three launchable apps on the device and
 cleans up a leftover test folder from an interrupted run before starting.
 
-**Not covered by tests:** `BackupManager` round-trips, `ItemActionMenu`'s
-dialogs, `WidgetContainer`, theming, and font import. `ThemeBroadcaster`'s actual
-`sendBroadcast` is untested too — only the pure fan-out under it is.
+**Not covered by tests:** `ItemActionMenu`'s dialogs, `WidgetContainer`,
+theming, font import, and `ThemeBroadcaster.sendBroadcast` itself (only the
+pure fan-out and the permission constant are locked).
 
 ---
 
@@ -822,8 +848,8 @@ No other file was removed; everything else was an edit in place. `.gradle/` and
 ### Changing the database schema
 1. Bump `@Database(version = …)` in `AppDatabase.kt`.
 2. Add a `Migration` object and register it in `addMigrations(…)`.
-3. `FolderOrderTest` exercises migrations against a real device database —
-   run it after any schema change.
+3. `FolderMigrationTest` is the migration test (hand-built v1 → v3).
+   `FolderOrderTest` only covers live ordering on a current-schema database.
 
 ### Before every release
 ```sh

@@ -11,8 +11,8 @@ import com.piercingxx.xxlauncher.theme.ThemeManager
 class LauncherApplication : Application() {
 
     val settings: SettingsRepository by lazy { SettingsRepository(this) }
-    val appRepo: AppRepository by lazy { AppRepository(this, settings) }
     val folders: FolderManager by lazy { FolderManager(this, settings) }
+    val appRepo: AppRepository by lazy { AppRepository(this, settings, folders) }
     val themeManager: ThemeManager by lazy { ThemeManager(this, settings) }
 
     override fun onCreate() {

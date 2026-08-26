@@ -66,6 +66,12 @@ interface FolderDao {
 
     @Query("DELETE FROM folder_members WHERE folderId = :folderId AND appId = :appId")
     suspend fun removeMember(folderId: Int, appId: String)
+
+    @Query("DELETE FROM folder_members")
+    suspend fun deleteAllMembers()
+
+    @Query("DELETE FROM folders")
+    suspend fun deleteAllFolders()
 }
 
 @Database(
@@ -85,7 +91,7 @@ abstract class AppDatabase : RoomDatabase() {
          * renumbers them alphabetically on the next read, so folders keep the
          * order they had before the upgrade.
          */
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE folder_members ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0"
@@ -98,7 +104,7 @@ abstract class AppDatabase : RoomDatabase() {
          * in SharedPreferences; the table was created but never read or
          * written, so there is nothing to carry forward.
          */
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
+        val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS home_slots")
             }

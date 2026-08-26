@@ -289,4 +289,65 @@ class SettingsRepository(context: Context) {
         if (untilMillis > now) entries.add("$packageName|$untilMillis")
         prefs.edit { putStringSet(KEY_MUTED_APPS, entries) }
     }
+
+    fun getMuteEntries(): Map<String, Long> {
+        val now = System.currentTimeMillis()
+        return prefs.getStringSet(KEY_MUTED_APPS, null).orEmpty().mapNotNull { entry ->
+            val pkg = entry.substringBefore("|")
+            val until = entry.substringAfter("|").toLongOrNull() ?: return@mapNotNull null
+            if (pkg.isBlank() || until <= now) null else pkg to until
+        }.toMap()
+    }
+
+    fun replaceMuteEntries(entries: Map<String, Long>) {
+        val now = System.currentTimeMillis()
+        val set = entries.mapNotNull { (pkg, until) ->
+            if (pkg.isBlank() || until <= now) null else "$pkg|$until"
+        }.toSet()
+        prefs.edit { putStringSet(KEY_MUTED_APPS, set) }
+    }
+
+    fun replaceRenameLabels(labels: Map<String, String>) {
+        val existing = prefs.all.keys.filter { it.startsWith(RENAME_PREFIX) }
+        prefs.edit {
+            existing.forEach { remove(it) }
+            labels.forEach { (key, label) ->
+                if (key.isNotBlank() && label.isNotBlank()) {
+                    putString(RENAME_PREFIX + key, label)
+                }
+            }
+        }
+    }
+
+    fun replaceWidgetTapActions(actions: Map<String, String>) {
+        prefs.edit {
+            ALL_WIDGETS.forEach { widget ->
+                putString(widgetTapKey(widget), actions[widget].orEmpty())
+            }
+        }
+    }
+
+    fun migrateUserToken(from: String, to: String) {
+        if (from == to) return
+        hiddenApps = hiddenApps.map { AppKey.rewriteUserToken(it, from, to) }.toSet()
+        pinnedApps = pinnedApps.map { AppKey.rewriteUserToken(it, from, to) }
+        val labels = getRenameLabels()
+        if (labels.any { AppKey.parse(it.key).userToken == from }) {
+            replaceRenameLabels(
+                labels.mapKeys { (key, _) -> AppKey.rewriteUserToken(key, from, to) }
+            )
+        }
+        for (slot in 1..MAX_SLOTS) {
+            val entry = getSlot(slot)
+            if (entry.userToken == from) setSlot(slot, entry.copy(userToken = to))
+        }
+        swipeLeftApp = swipeLeftApp?.let { rewriteEmbeddedUserToken(it, from, to) }
+        swipeRightApp = swipeRightApp?.let { rewriteEmbeddedUserToken(it, from, to) }
+        ALL_WIDGETS.forEach { widget ->
+            val action = getWidgetTapAction(widget)
+            if (action.isNotBlank()) {
+                setWidgetTapAction(widget, rewriteEmbeddedUserToken(action, from, to))
+            }
+        }
+    }
 }

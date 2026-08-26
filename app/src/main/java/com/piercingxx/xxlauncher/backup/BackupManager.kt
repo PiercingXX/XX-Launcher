@@ -17,8 +17,8 @@ data class BackupData(
     val textAlignment: String = "center",
     val dateTimeMode: String = "date_time",
     val statusBarVisible: Boolean = false,
-    val widgetsEnabled: List<String> = emptyList(),
-    val widgetTapActions: Map<String, String> = emptyMap(),
+    val widgetsEnabled: List<String>? = emptyList(),
+    val widgetTapActions: Map<String, String>? = emptyMap(),
     val weatherTempUnit: String = "fahrenheit",
     val autoShowKeyboard: Boolean = false,
     val sortMode: String = "default",
@@ -34,11 +34,13 @@ data class BackupData(
     val appearanceMode: String = "dark",
     val fontFamily: String = "jetbrains_mono_nerd",
     val textSizeScale: Float = 1f,
-    val hiddenApps: List<String> = emptyList(),
-    val pinnedApps: List<String> = emptyList(),
-    val renameLabels: Map<String, String> = emptyMap(),
-    val slots: List<BackupSlot> = emptyList(),
-    val folders: List<BackupFolder> = emptyList(),
+    val hiddenApps: List<String>? = emptyList(),
+    val pinnedApps: List<String>? = emptyList(),
+    val renameLabels: Map<String, String>? = emptyMap(),
+    val slots: List<BackupSlot>? = emptyList(),
+    val folders: List<BackupFolder>? = emptyList(),
+    /** `"package|untilEpochMillis"` entries; absent on v1 files written before mutes. */
+    val mutedApps: List<String>? = emptyList(),
 )
 
 data class BackupSlot(
@@ -58,12 +60,13 @@ data class BackupSlot(
 
 data class BackupFolder(
     val name: String,
-    val members: List<String>,
+    val members: List<String>? = emptyList(),
 )
 
 /**
  * Versioned JSON export/import of every user-configurable thing. Import
- * validates the full payload before writing anything.
+ * validates the full payload before writing anything, then replaces live
+ * state instead of merging with leftovers.
  */
 class BackupManager(
     private val settings: SettingsRepository,
@@ -128,39 +131,36 @@ class BackupManager(
                 renameLabels = settings.getRenameLabels(),
                 slots = slots,
                 folders = backupFolders,
+                mutedApps = settings.getMuteEntries().map { (pkg, until) -> "$pkg|$until" },
             )
         )
     }
 
     suspend fun importFromJson(json: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val data = try {
-            gson.fromJson(json, BackupData::class.java)
-        } catch (e: JsonSyntaxException) {
-            return@withContext Result.failure(IllegalArgumentException("Not a valid backup file"))
-        } ?: return@withContext Result.failure(IllegalArgumentException("Empty backup file"))
+        val data = parseBackupJson(gson, json).getOrElse { return@withContext Result.failure(it) }
 
-        // Validate everything before writing anything.
         if (data.version != BACKUP_VERSION) {
             return@withContext Result.failure(
                 IllegalArgumentException("Unsupported backup version ${data.version}")
             )
         }
         if (data.slotCount !in 0..SettingsRepository.MAX_SLOTS ||
-            data.slots.any { it.index !in 1..SettingsRepository.MAX_SLOTS } ||
+            data.slots.orEmpty().any { it.index !in 1..SettingsRepository.MAX_SLOTS } ||
             data.textSizeScale !in 0.25f..4f
         ) {
             return@withContext Result.failure(IllegalArgumentException("Backup failed validation"))
         }
 
-        // Settings
+        val nameToId = folders.replaceAll(
+            data.folders.orEmpty().map { it.name to it.members.orEmpty() }
+        )
+
         settings.slotCount = data.slotCount
         settings.textAlignment = data.textAlignment
         settings.dateTimeMode = data.dateTimeMode
         settings.statusBarVisible = data.statusBarVisible
-        settings.widgetsOrder = data.widgetsEnabled
-        data.widgetTapActions.forEach { (widget, action) ->
-            settings.setWidgetTapAction(widget, action)
-        }
+        settings.widgetsOrder = data.widgetsEnabled.orEmpty()
+        settings.replaceWidgetTapActions(data.widgetTapActions.orEmpty())
         settings.weatherTempUnit = data.weatherTempUnit
         settings.autoShowKeyboard = data.autoShowKeyboard
         settings.sortMode = data.sortMode
@@ -176,41 +176,14 @@ class BackupManager(
         settings.appearanceMode = data.appearanceMode
         settings.fontFamily = data.fontFamily
         settings.textSizeScale = data.textSizeScale
-        settings.hiddenApps = data.hiddenApps.toSet()
-        settings.pinnedApps = data.pinnedApps
-        data.renameLabels.forEach { (key, label) -> settings.setRenameLabel(key, label) }
+        settings.hiddenApps = data.hiddenApps.orEmpty().toSet()
+        settings.pinnedApps = data.pinnedApps.orEmpty()
+        settings.replaceRenameLabels(data.renameLabels.orEmpty())
+        settings.replaceMuteEntries(parseMuteEntries(data.mutedApps.orEmpty()))
         settings.firstRunSeeded = true
 
-        // Folders: recreate by name, then map slots onto the new ids.
-        val nameToId = mutableMapOf<String, Int>()
-        for (folder in data.folders) {
-            val created = folders.createFolder(folder.name).getOrNull()
-                ?: folders.getFolders().firstOrNull { it.name.equals(folder.name, true) }
-                ?: continue
-            nameToId[folder.name] = created.id
-            folder.members.forEach { memberKey ->
-                // See FolderManager.getMembers: the profile is the last part,
-                // since shortcut keys carry an extra id in the middle.
-                val parts = memberKey.split("|")
-                val packageName = parts.first()
-                val userToken = parts.getOrNull(parts.lastIndex.coerceAtLeast(1)) ?: "personal"
-                folders.addMember(
-                    created.id,
-                    com.piercingxx.xxlauncher.data.AppInfo(
-                        packageName = packageName,
-                        activityClassName = null,
-                        label = packageName,
-                        userToken = userToken,
-                        isSystem = false,
-                        installedAt = 0L,
-                        sizeBytes = 0L,
-                    ),
-                )
-            }
-        }
-
         for (slot in 1..SettingsRepository.MAX_SLOTS) settings.clearSlot(slot)
-        data.slots.forEach { slot ->
+        data.slots.orEmpty().forEach { slot ->
             settings.setSlot(
                 slot.index,
                 SlotEntry(
@@ -227,3 +200,51 @@ class BackupManager(
         Result.success(Unit)
     }
 }
+
+internal fun parseBackupJson(gson: Gson, json: String): Result<BackupData> {
+    val data = try {
+        gson.fromJson(json, BackupData::class.java)
+    } catch (e: JsonSyntaxException) {
+        return Result.failure(IllegalArgumentException("Not a valid backup file"))
+    } ?: return Result.failure(IllegalArgumentException("Empty backup file"))
+    return Result.success(data.normalized())
+}
+
+internal fun BackupData.normalized(): BackupData = BackupData(
+    version = version,
+    timestamp = timestamp,
+    slotCount = slotCount,
+    textAlignment = textAlignment,
+    dateTimeMode = dateTimeMode,
+    statusBarVisible = statusBarVisible,
+    widgetsEnabled = widgetsEnabled.orEmpty(),
+    widgetTapActions = widgetTapActions.orEmpty(),
+    weatherTempUnit = weatherTempUnit,
+    autoShowKeyboard = autoShowKeyboard,
+    sortMode = sortMode,
+    swipeLeftApp = swipeLeftApp,
+    swipeRightApp = swipeRightApp,
+    swipeLeftEnabled = swipeLeftEnabled,
+    swipeRightEnabled = swipeRightEnabled,
+    swipeDownAction = swipeDownAction,
+    doubleTapLock = doubleTapLock,
+    homeToRecents = homeToRecents,
+    themePreset = themePreset,
+    customBgColor = customBgColor,
+    appearanceMode = appearanceMode,
+    fontFamily = fontFamily,
+    textSizeScale = textSizeScale,
+    hiddenApps = hiddenApps.orEmpty(),
+    pinnedApps = pinnedApps.orEmpty(),
+    renameLabels = renameLabels.orEmpty(),
+    slots = slots.orEmpty(),
+    folders = folders.orEmpty().map { it.copy(members = it.members.orEmpty()) },
+    mutedApps = mutedApps.orEmpty(),
+)
+
+internal fun parseMuteEntries(entries: List<String>): Map<String, Long> =
+    entries.mapNotNull { entry ->
+        val pkg = entry.substringBefore("|")
+        val until = entry.substringAfter("|").toLongOrNull() ?: return@mapNotNull null
+        if (pkg.isBlank()) null else pkg to until
+    }.toMap()

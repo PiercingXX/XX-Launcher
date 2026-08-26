@@ -39,7 +39,6 @@ import com.piercingxx.xxlauncher.util.expandNotificationDrawer
 import com.piercingxx.xxlauncher.util.hideNavigationBar
 import com.piercingxx.xxlauncher.util.hideStatusBar
 import com.piercingxx.xxlauncher.util.isEinkDisplay
-import com.piercingxx.xxlauncher.util.isPackageInstalled
 import com.piercingxx.xxlauncher.util.openCameraApp
 import com.piercingxx.xxlauncher.util.openDialerApp
 import com.piercingxx.xxlauncher.util.openWebSearch
@@ -205,7 +204,10 @@ class MainActivity : AppCompatActivity() {
                 androidx.lifecycle.Lifecycle.State.RESUMED
             )
         ) {
-            GestureAccessibilityService.openRecents()
+            if (!GestureAccessibilityService.openRecents()) {
+                showToast(getString(R.string.accessibility_service_needed_recents))
+                runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            }
         }
     }
 
@@ -245,13 +247,6 @@ class MainActivity : AppCompatActivity() {
 
         val count = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
         for (slot in 1..count) {
-            val entry = settings.getSlot(slot)
-            // Prune apps that are gone.
-            if (!entry.isFolder && entry.packageName.isNotBlank() &&
-                !isPackageInstalled(entry.packageName, userFromToken(entry.userToken))
-            ) {
-                settings.clearSlot(slot)
-            }
             val current = settings.getSlot(slot)
 
             val view = TextView(this).apply {
@@ -334,16 +329,12 @@ class MainActivity : AppCompatActivity() {
             entry.isFolder -> toggleFolder(slot, entry.folderId)
             entry.packageName.isNotBlank() -> {
                 collapseFolder()
-                val launched = appRepo.launch(
+                appRepo.launch(
                     entry.packageName,
                     entry.activityClassName.ifBlank { null },
                     entry.userToken,
                     entry.shortcutId.ifBlank { null },
                 )
-                if (!launched) {
-                    settings.clearSlot(slot)
-                    renderHomeSlots()
-                }
             }
             // An empty slot goes straight to the picker; long-press works too.
             else -> onSlotLongPressed(slot)
@@ -561,17 +552,32 @@ class MainActivity : AppCompatActivity() {
 
     // Default-launcher role
 
+    private var defaultLauncherDialog: AlertDialog? = null
+    private var suppressDefaultLauncherPrompt = false
+
     private fun maybeShowDefaultLauncherPrompt() {
         if (settings.hideDefaultLauncherPrompt || isDefaultLauncher()) return
-        AlertDialog.Builder(this)
+        if (suppressDefaultLauncherPrompt) return
+        if (defaultLauncherDialog?.isShowing == true) return
+        val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.default_launcher_title)
             .setMessage(R.string.default_launcher_message)
-            .setPositiveButton(R.string.default_launcher_set) { _, _ -> requestHomeRole() }
+            .setPositiveButton(R.string.default_launcher_set) { _, _ ->
+                suppressDefaultLauncherPrompt = true
+                requestHomeRole()
+            }
             .setNegativeButton(R.string.default_launcher_not_now) { _, _ ->
                 settings.hideDefaultLauncherPrompt = true
             }
+            .setOnCancelListener {
+                settings.hideDefaultLauncherPrompt = true
+            }
             .show()
-            .applyLauncherTheme(themeManager, settings.fontFamily)
+        defaultLauncherDialog = dialog
+        dialog.setOnDismissListener {
+            if (defaultLauncherDialog === dialog) defaultLauncherDialog = null
+        }
+        dialog.applyLauncherTheme(themeManager, settings.fontFamily)
     }
 
     private fun isDefaultLauncher(): Boolean {
@@ -644,17 +650,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleSwipeLeft() {
         if (!settings.swipeLeftEnabled) return
-        // Swiping left pulls the app in from the right edge.
-        if (!launchSwipeApp(settings.swipeLeftApp, R.anim.slide_in_right)) {
+        val target = settings.swipeLeftApp
+        if (target.isNullOrBlank()) {
             openCameraApp(this, swipeAnimOptions(R.anim.slide_in_right))
+        } else {
+            launchSwipeApp(target, R.anim.slide_in_right)
         }
     }
 
     private fun handleSwipeRight() {
         if (!settings.swipeRightEnabled) return
-        // Swiping right pulls the app in from the left edge.
-        if (!launchSwipeApp(settings.swipeRightApp, R.anim.slide_in_left)) {
+        val target = settings.swipeRightApp
+        if (target.isNullOrBlank()) {
             openDialerApp(this, swipeAnimOptions(R.anim.slide_in_left))
+        } else {
+            launchSwipeApp(target, R.anim.slide_in_left)
         }
     }
 
@@ -684,9 +694,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun lockScreen() {
-        if (!GestureAccessibilityService.lockScreen()) {
-            showToast(getString(R.string.accessibility_service_needed))
-            runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.P -> {
+                showToast(getString(R.string.lock_screen_unsupported))
+            }
+            !GestureAccessibilityService.isConnected() -> {
+                showToast(getString(R.string.accessibility_service_needed))
+                runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            }
+            !GestureAccessibilityService.lockScreen() -> {
+                showToast(getString(R.string.accessibility_service_needed))
+                runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            }
         }
     }
 

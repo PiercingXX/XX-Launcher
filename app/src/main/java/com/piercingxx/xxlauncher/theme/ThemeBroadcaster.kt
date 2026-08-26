@@ -17,7 +17,9 @@ import android.content.Intent
  *    included — it is the only way receivers can honor "Custom".
  *
  * Manifest-declared receivers do not get implicit broadcasts since Android O,
- * so one explicit copy is sent per family package via [Intent.setPackage].
+ * so one explicit copy is sent per family package via [Intent.setPackage],
+ * restricted by the signature permission [PERMISSION_THEME_SYNC]. Family
+ * apps must `uses-permission` that name (same signing key).
  *
  * The payload fan-out ([payloads]) is pure Kotlin so plain JUnit can verify
  * the mapping and per-package delivery without Robolectric; only [broadcast]
@@ -28,6 +30,7 @@ object ThemeBroadcaster {
     const val ACTION_THEME_CHANGED = "xx.launcher.THEME_CHANGED"
     const val EXTRA_THEME_NAME = "xx.launcher.extra.THEME_NAME"
     const val EXTRA_BACKGROUND = "xx.launcher.extra.BACKGROUND"
+    const val PERMISSION_THEME_SYNC = "com.piercingxx.xxlauncher.permission.THEME_SYNC"
 
     /** Display name broadcast when the preset key is not a built-in preset. */
     const val CUSTOM_DISPLAY_NAME = "Custom"
@@ -81,7 +84,8 @@ object ThemeBroadcaster {
 
     /**
      * Sends one explicit [ACTION_THEME_CHANGED] broadcast per family package.
-     * Fire-and-forget: absent packages simply drop the broadcast.
+     * Restricted to apps that hold [PERMISSION_THEME_SYNC] (signature). Absent
+     * packages simply drop the broadcast.
      */
     fun broadcast(context: Context, presetKey: String, colors: ThemeColors) {
         payloads(presetKey, colors).forEach { payload ->
@@ -89,7 +93,8 @@ object ThemeBroadcaster {
                 Intent(ACTION_THEME_CHANGED)
                     .setPackage(payload.targetPackage)
                     .putExtra(EXTRA_THEME_NAME, payload.themeName)
-                    .putExtra(EXTRA_BACKGROUND, payload.backgroundColor)
+                    .putExtra(EXTRA_BACKGROUND, payload.backgroundColor),
+                PERMISSION_THEME_SYNC,
             )
         }
     }

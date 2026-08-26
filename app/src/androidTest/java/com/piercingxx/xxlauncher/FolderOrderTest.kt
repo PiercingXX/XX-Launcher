@@ -14,8 +14,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Folder member ordering, against the real on-device database — so this also
- * covers the schema migration that added the member sort column.
+ * Folder member ordering against the live on-device database. Schema
+ * migrations are covered by [FolderMigrationTest], not this class: a fresh
+ * install creates v3 directly, so MIGRATION_1_2 / MIGRATION_2_3 never run.
  */
 @RunWith(AndroidJUnit4::class)
 class FolderOrderTest {

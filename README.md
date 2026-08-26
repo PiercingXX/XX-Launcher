@@ -38,8 +38,10 @@ Every other XX app is a receiver; the launcher decides. Pick a preset in
 package with the preset name and the resolved background ARGB — the ARGB is the
 only way a receiver can honor `Custom`. Eight names in the contract: AMOLED
 Night, Graphite, Forest Night, Ocean Drift, Burgundy, Paper, Mist, Custom.
-Verified end to end on a Pixel 6 under GrapheneOS: pick a preset here, the
-siblings repaint.
+The broadcast is signature-restricted
+(`com.piercingxx.xxlauncher.permission.THEME_SYNC`); family apps must
+`uses-permission` that name under the same signing key. Verified end to end
+on a Pixel 6 under GrapheneOS: pick a preset here, the siblings repaint.
 
 ## Building 🧪
 
@@ -48,7 +50,7 @@ Gradle 8.11.1, AGP 8.9.1, Kotlin 2.1.20. `minSdk` 24, `compileSdk`/`targetSdk`
 
 ```sh
 ./gradlew assembleDebug          # APK lands in app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest      # 38 unit tests, no device needed
+./gradlew testDebugUnitTest      # JVM unit tests, no device needed
 ./gradlew installDebug
 ```
 

@@ -25,19 +25,38 @@ import android.widget.Toast
 
 private const val TAG = "SystemActions"
 
-// Stable serialization tokens for user profiles; survives device moves and
-// work-profile re-enrollment, unlike UserHandle.toString().
+// Stable serialization tokens for user profiles. "personal" is this process's
+// user; anything else is `u{serial}` from UserManager. "managed" is the
+// pre-serial spelling and still resolves to the first extra profile so old
+// prefs and backups keep working.
 const val USER_PERSONAL = "personal"
 const val USER_MANAGED = "managed"
 
-fun serializeUser(user: UserHandle): String =
-    if (user == Process.myUserHandle()) USER_PERSONAL else USER_MANAGED
+internal fun userSerialToken(serial: Long): String = "u$serial"
+
+fun serializeUser(user: UserHandle, userManager: UserManager? = null): String {
+    if (user == Process.myUserHandle()) return USER_PERSONAL
+    val serial = userManager?.getSerialNumberForUser(user) ?: return USER_MANAGED
+    return if (serial >= 0L) userSerialToken(serial) else USER_MANAGED
+}
+
+fun Context.serializeUser(user: UserHandle): String =
+    serializeUser(user, getSystemService(Context.USER_SERVICE) as UserManager)
 
 fun Context.userFromToken(token: String): UserHandle {
-    if (token != USER_MANAGED) return Process.myUserHandle()
     val userManager = getSystemService(Context.USER_SERVICE) as UserManager
-    return userManager.userProfiles.firstOrNull { it != Process.myUserHandle() }
-        ?: Process.myUserHandle()
+    val personal = Process.myUserHandle()
+    if (token.isBlank() || token == USER_PERSONAL) return personal
+    if (token == USER_MANAGED) {
+        return userManager.userProfiles.firstOrNull { it != personal } ?: personal
+    }
+    if (token.startsWith("u")) {
+        val serial = token.removePrefix("u").toLongOrNull()
+        if (serial != null) {
+            userManager.getUserForSerialNumber(serial)?.let { return it }
+        }
+    }
+    return personal
 }
 
 fun Context.showToast(message: String) {
@@ -176,18 +195,6 @@ fun Context.requestUninstall(packageName: String, user: UserHandle) {
         )
     } catch (e: Exception) {
         Log.w(TAG, "Unable to start uninstall", e)
-    }
-}
-
-fun Context.isPackageInstalled(
-    packageName: String,
-    user: UserHandle = Process.myUserHandle(),
-): Boolean {
-    val launcher = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-    return try {
-        launcher.getActivityList(packageName, user).isNotEmpty()
-    } catch (e: Exception) {
-        false
     }
 }
 

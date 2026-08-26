@@ -111,9 +111,10 @@ class SettingsActivity : AppCompatActivity() {
                         // Runtime permissions and custom fonts are not restored.
                         requireContext().showToast(getString(R.string.restore_caveats))
                         app.appRepo.refresh()
-                        // The restore may have swapped the theme; re-publish it
-                        // to the family apps (BackupManager itself is
-                        // context-free, so the broadcast fires here).
+                        // BackupManager is context-free, so appearance and
+                        // wallpaper have to be reapplied at this call site.
+                        app.themeManager.setAppearanceMode(app.settings.appearanceMode)
+                        app.themeManager.applyWallpaper()
                         app.themeManager.publish()
                     },
                     onFailure = { requireContext().showToast(getString(R.string.toast_restore_failed)) },
@@ -281,6 +282,9 @@ class SettingsActivity : AppCompatActivity() {
             }
             updateSwipeSummaries()
             findPreference<Preference>("version")?.summary = BuildConfig.VERSION_NAME
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                findPreference<Preference>("double_tap_lock")?.isVisible = false
+            }
             findPreference<Preference>("appearance_mode")?.setOnPreferenceChangeListener { _, value ->
                 app.themeManager.setAppearanceMode(value.toString()); true
             }

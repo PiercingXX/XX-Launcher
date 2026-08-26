@@ -17,6 +17,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.data.AppInfo
 import com.piercingxx.xxlauncher.data.AppRepository
+import com.piercingxx.xxlauncher.data.RenamePropagator
 import com.piercingxx.xxlauncher.data.SettingsRepository
 import com.piercingxx.xxlauncher.folder.FolderWithCount
 import com.piercingxx.xxlauncher.menu.ItemActionMenu
@@ -29,6 +30,7 @@ import com.piercingxx.xxlauncher.util.showStatusBar
 import com.piercingxx.xxlauncher.util.isEinkDisplay
 import com.piercingxx.xxlauncher.util.openUrl
 import com.piercingxx.xxlauncher.util.showKeyboard
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class AppDrawerActivity : AppCompatActivity() {
@@ -48,6 +50,8 @@ class AppDrawerActivity : AppCompatActivity() {
     private var folderMemberKeys: Set<String> = emptySet()
     private var expandedFolderId = -1
     private var currentResults: List<AppInfo> = emptyList()
+    private var listGeneration = 0
+    private var memberRowsJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -178,10 +182,7 @@ class AppDrawerActivity : AppCompatActivity() {
     private fun homeSlotKeys(): Set<String> = buildSet {
         val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
         for (slot in 1..visible) {
-            val entry = settings.getSlot(slot)
-            if (!entry.isFolder && entry.packageName.isNotBlank()) {
-                add("${entry.packageName}|${entry.userToken}")
-            }
+            RenamePropagator.renameKey(settings.getSlot(slot))?.let { add(it) }
         }
     }
 
@@ -196,6 +197,7 @@ class AppDrawerActivity : AppCompatActivity() {
                 emptyList(),
                 showWebSearchRow = rawQuery.length > 1,
                 showSettingsRow = false,
+                generation = ++listGeneration,
             )
             currentResults = emptyList()
             return
@@ -235,6 +237,7 @@ class AppDrawerActivity : AppCompatActivity() {
             if (searching) emptyList() else folders,
             showWebSearchRow = searching && sorted.isEmpty(),
             showSettingsRow = settingsRowVisible,
+            generation = ++listGeneration,
         )
     }
 
@@ -259,7 +262,9 @@ class AppDrawerActivity : AppCompatActivity() {
         folderRows: List<FolderWithCount>,
         showWebSearchRow: Boolean,
         showSettingsRow: Boolean,
+        generation: Int,
     ) {
+        memberRowsJob?.cancel()
         appListContainer.removeAllViews()
         val colors = themeManager.getCurrentColors()
         val scale = settings.textSizeScale
@@ -271,7 +276,7 @@ class AppDrawerActivity : AppCompatActivity() {
         folderRows.forEach { entry ->
             appListContainer.addView(createFolderRow(entry, colors.textColor, scale))
             if (entry.folder.id == expandedFolderId) {
-                addFolderMemberRows(entry.folder.id, colors.textColor, scale)
+                addFolderMemberRows(entry.folder.id, colors.textColor, scale, generation)
             }
         }
 
@@ -338,17 +343,17 @@ class AppDrawerActivity : AppCompatActivity() {
         return row
     }
 
-    private fun addFolderMemberRows(folderId: Int, textColor: Int, scale: Float) {
-        lifecycleScope.launch {
+    private fun addFolderMemberRows(folderId: Int, textColor: Int, scale: Float, generation: Int) {
+        memberRowsJob = lifecycleScope.launch {
             val members =
                 LauncherApplication.from(this@AppDrawerActivity).folders.getMembers(folderId)
-            // Guard against a re-render racing the load.
-            if (expandedFolderId != folderId) return@launch
+            if (generation != listGeneration || expandedFolderId != folderId) return@launch
             val anchor = appListContainer.children().indexOfFirst { view ->
                 view.getTag(R.id.tag_folder_id) == folderId
             }
             var insertAt = if (anchor >= 0) anchor + 1 else appListContainer.childCount
             members.forEach { member ->
+                if (generation != listGeneration || expandedFolderId != folderId) return@launch
                 val row = makeRow(member.label, textColor, 16f * scale, indent = true) {
                     launchApp(member)
                 }

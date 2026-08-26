@@ -30,6 +30,8 @@ class GestureAccessibilityService : AccessibilityService() {
         var instance: GestureAccessibilityService? = null
             private set
 
+        fun isConnected(): Boolean = instance != null
+
         /**
          * GLOBAL_ACTION_LOCK_SCREEN is API 28+. The constant inlines, so the
          * call would not crash on 24-27 — it would just silently return

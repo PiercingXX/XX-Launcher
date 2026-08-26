@@ -38,6 +38,10 @@ class ThemeBroadcasterTest {
         assertEquals("xx.launcher.THEME_CHANGED", ThemeBroadcaster.ACTION_THEME_CHANGED)
         assertEquals("xx.launcher.extra.THEME_NAME", ThemeBroadcaster.EXTRA_THEME_NAME)
         assertEquals("xx.launcher.extra.BACKGROUND", ThemeBroadcaster.EXTRA_BACKGROUND)
+        assertEquals(
+            "com.piercingxx.xxlauncher.permission.THEME_SYNC",
+            ThemeBroadcaster.PERMISSION_THEME_SYNC,
+        )
     }
 
     @Test

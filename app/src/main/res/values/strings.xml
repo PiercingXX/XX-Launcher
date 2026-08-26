@@ -72,6 +72,10 @@
     <string name="default_launcher_set">Set default</string>
     <string name="default_launcher_not_now">Not now</string>
     <string name="accessibility_service_needed">Enable the launcher accessibility service to lock the screen</string>
+    <string name="accessibility_service_needed_recents">Enable the launcher accessibility service to open recents</string>
+    <string name="lock_screen_unsupported">This device cannot lock the screen from the launcher</string>
+    <string name="permission_theme_sync_label">XX theme sync</string>
+    <string name="permission_theme_sync_description">Lets XX family apps receive the launcher\'s theme</string>
     <string name="notification_access_needed">Grant notification access to mute apps</string>
     <string name="disable_for_hours">%d hours</string>
     <string name="action_remove_from_folder">Remove from Folder</string>

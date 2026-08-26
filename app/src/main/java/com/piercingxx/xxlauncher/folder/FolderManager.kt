@@ -2,12 +2,13 @@ package com.piercingxx.xxlauncher.folder
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import androidx.room.withTransaction
 import com.piercingxx.xxlauncher.data.AppDatabase
 import com.piercingxx.xxlauncher.data.AppInfo
+import com.piercingxx.xxlauncher.data.AppKey
 import com.piercingxx.xxlauncher.data.Folder
 import com.piercingxx.xxlauncher.data.FolderMember
 import com.piercingxx.xxlauncher.data.SettingsRepository
-import com.piercingxx.xxlauncher.util.serializeUser
 import com.piercingxx.xxlauncher.util.userFromToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -16,9 +17,9 @@ import kotlinx.coroutines.withContext
 data class FolderWithCount(val folder: Folder, val memberCount: Int)
 
 /**
- * Room-backed folders. Members are stored as "package|userToken" keys and
- * resolved against LauncherApps at read time, so uninstalled apps drop out
- * gracefully.
+ * Room-backed folders. Members are stored as app keys and resolved against
+ * LauncherApps at read time for labels. Rows are not deleted on a failed
+ * lookup — a locked work profile is not an uninstall.
  */
 class FolderManager(
     private val context: Context,
@@ -44,51 +45,56 @@ class FolderManager(
     }
 
     /**
-     * Resolves member rows to launchable apps in the user's manual order;
-     * prunes entries that no longer resolve.
+     * Resolves member rows to launchable apps in the user's manual order.
+     * A lookup that throws or returns empty keeps the stored row — prune
+     * happens in [removePackage] on actual uninstall.
      */
     suspend fun getMembers(folderId: Int): List<AppInfo> = withContext(Dispatchers.IO) {
         val launcherApps =
             context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
         val rows = folderDao.getFolderMembers(folderId)
         val resolved = mutableListOf<Pair<FolderMember, AppInfo>>()
-        val stale = mutableListOf<FolderMember>()
 
         rows.forEach { row ->
-            // Keys are "package|userToken", or "package|shortcutId|userToken"
-            // for pinned shortcuts — so the profile is always the LAST part.
-            val parts = row.appId.split("|")
-            val packageName = parts.first()
-            val userToken = parts.getOrNull(parts.lastIndex.coerceAtLeast(1)) ?: "personal"
-            val user = context.userFromToken(userToken)
-            val activity = runCatching {
-                launcherApps.getActivityList(packageName, user).firstOrNull()
-            }.getOrNull()
-            if (activity == null) {
-                stale.add(row)
-                return@forEach
+            val key = AppKey.parse(row.appId)
+            val user = context.userFromToken(key.userToken)
+            val activity = try {
+                launcherApps.getActivityList(key.packageName, user).firstOrNull()
+            } catch (_: Exception) {
+                null
             }
-            val original = activity.label.toString()
             val rename = settings.getRenameLabel(row.appId)
-            resolved.add(
-                row to AppInfo(
-                    packageName = packageName,
+            val info = if (activity != null) {
+                val original = activity.label.toString()
+                AppInfo(
+                    packageName = key.packageName,
                     activityClassName = activity.componentName.className,
                     label = rename.ifBlank { original },
                     originalLabel = original,
-                    userToken = serializeUser(user),
+                    userToken = key.userToken,
                     isSystem = false,
                     installedAt = activity.firstInstallTime,
                     sizeBytes = 0L,
+                    shortcutId = key.shortcutId,
                 )
-            )
+            } else {
+                AppInfo(
+                    packageName = key.packageName,
+                    activityClassName = null,
+                    label = rename.ifBlank { key.packageName },
+                    originalLabel = key.packageName,
+                    userToken = key.userToken,
+                    isSystem = false,
+                    installedAt = 0L,
+                    sizeBytes = 0L,
+                    shortcutId = key.shortcutId,
+                )
+            }
+            resolved.add(row to info)
         }
-
-        stale.forEach { folderDao.deleteMember(it) }
 
         // Ties break alphabetically, so folders written before manual ordering
         // existed (every row at 0) keep the order they used to display in.
-        // Renumbering to 0..n-1 also closes gaps left by removed members.
         val ordered = resolved.sortedWith(
             compareBy<Pair<FolderMember, AppInfo>>({ it.first.sortOrder })
                 .thenBy { it.second.label.lowercase() }
@@ -195,6 +201,62 @@ class FolderManager(
     suspend fun getAllMemberKeys(): Set<String> = withContext(Dispatchers.IO) {
         db.folderDao().getAllMembers().mapTo(mutableSetOf()) { it.appId }
     }
+
+    /** Drops members of an uninstalled package (every shortcut of that package too). */
+    suspend fun removePackage(packageName: String, userToken: String) = withContext(Dispatchers.IO) {
+        val affected = mutableSetOf<Int>()
+        folderDao.getAllMembers().forEach { member ->
+            val parsed = AppKey.parse(member.appId)
+            if (parsed.packageName == packageName && parsed.userToken == userToken) {
+                folderDao.deleteMember(member)
+                affected.add(member.folderId)
+            }
+        }
+        affected.forEach { folderId ->
+            if (folderDao.getFolderMembers(folderId).isEmpty()) {
+                deleteFolder(folderId)
+            }
+        }
+    }
+
+    suspend fun migrateUserToken(from: String, to: String) = withContext(Dispatchers.IO) {
+        if (from == to) return@withContext
+        folderDao.getAllMembers().forEach { member ->
+            val rewritten = AppKey.rewriteUserToken(member.appId, from, to)
+            if (rewritten != member.appId) {
+                folderDao.removeMember(member.folderId, member.appId)
+                folderDao.insertMember(member.copy(appId = rewritten))
+            }
+        }
+    }
+
+    /**
+     * Wipes every folder and recreates [incoming] (name → member keys) inside
+     * one transaction. Returns the new name → id map for remapping home slots.
+     */
+    suspend fun replaceAll(incoming: List<Pair<String, List<String>>>): Map<String, Int> =
+        withContext(Dispatchers.IO) {
+            db.withTransaction {
+                folderDao.deleteAllMembers()
+                folderDao.deleteAllFolders()
+                val nameToId = linkedMapOf<String, Int>()
+                incoming.forEach { (name, members) ->
+                    val trimmed = name.trim()
+                    if (trimmed.isBlank() || trimmed in nameToId) return@forEach
+                    val id = folderDao.insert(
+                        Folder(name = trimmed, sortOrder = nameToId.size)
+                    ).toInt()
+                    nameToId[trimmed] = id
+                    members.forEachIndexed { index, memberKey ->
+                        if (memberKey.isBlank()) return@forEachIndexed
+                        folderDao.insertMember(
+                            FolderMember(folderId = id, appId = memberKey, sortOrder = index)
+                        )
+                    }
+                }
+                nameToId
+            }
+        }
 
     suspend fun moveFolder(folderId: Int, up: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         val folders = folderDao.getAllFolders().firstOrNull() ?: emptyList()

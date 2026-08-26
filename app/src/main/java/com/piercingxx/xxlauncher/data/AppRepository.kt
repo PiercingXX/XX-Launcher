@@ -6,11 +6,15 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import com.piercingxx.xxlauncher.folder.FolderManager
+import com.piercingxx.xxlauncher.util.USER_MANAGED
+import com.piercingxx.xxlauncher.util.USER_PERSONAL
 import com.piercingxx.xxlauncher.util.serializeUser
 import com.piercingxx.xxlauncher.util.userFromToken
 import kotlinx.coroutines.CoroutineScope
@@ -38,14 +42,13 @@ data class AppInfo(
     /** Pre-rename label, so search still matches the app's real name. */
     val originalLabel: String = "",
 ) {
-    val isWorkProfile: Boolean get() = userToken == com.piercingxx.xxlauncher.util.USER_MANAGED
+    val isWorkProfile: Boolean
+        get() = userToken.isNotBlank() && userToken != USER_PERSONAL
     val isNew: Boolean get() = System.currentTimeMillis() - installedAt < ONE_HOUR_MS
     val isShortcut: Boolean get() = shortcutId != null
 
     /** Stable identity for hidden/pinned/renamed persistence. */
-    val key: String
-        get() = if (shortcutId != null) "$packageName|$shortcutId|$userToken"
-        else "$packageName|$userToken"
+    val key: String get() = AppKey(packageName, shortcutId, userToken).encoded()
 
     /**
      * Forgiving matcher: case-insensitive substring on the shown label (and on
@@ -72,7 +75,11 @@ data class AppInfo(
  * layers persisted rename labels on top. Hidden/pinned state lives in
  * [SettingsRepository] so it survives process death.
  */
-class AppRepository(private val context: Context, private val settings: SettingsRepository) {
+class AppRepository(
+    private val context: Context,
+    private val settings: SettingsRepository,
+    private val folders: FolderManager,
+) {
 
     private val launcherApps =
         context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
@@ -84,8 +91,11 @@ class AppRepository(private val context: Context, private val settings: Settings
 
     private val callback = object : LauncherApps.Callback() {
         override fun onPackageRemoved(packageName: String, user: UserHandle) {
-            pruneRemovedPackage(packageName, serializeUser(user))
-            refresh()
+            val token = context.serializeUser(user)
+            scope.launch {
+                pruneRemovedPackage(packageName, token)
+                loadAndPost()
+            }
         }
 
         override fun onPackageAdded(packageName: String, user: UserHandle) = refresh()
@@ -96,17 +106,31 @@ class AppRepository(private val context: Context, private val settings: Settings
 
     init {
         launcherApps.registerCallback(callback)
-        refresh()
+        scope.launch {
+            migrateLegacyManagedToken()
+            loadAndPost()
+        }
     }
 
     fun refresh() {
-        scope.launch {
-            try {
-                _apps.postValue(loadApps())
-            } catch (e: Exception) {
-                Log.w(TAG, "Unable to enumerate apps", e)
-            }
+        scope.launch { loadAndPost() }
+    }
+
+    private suspend fun loadAndPost() {
+        try {
+            _apps.postValue(loadApps())
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to enumerate apps", e)
         }
+    }
+
+    private suspend fun migrateLegacyManagedToken() {
+        val extra = userManager.userProfiles.firstOrNull { it != Process.myUserHandle() }
+            ?: return
+        val serial = context.serializeUser(extra)
+        if (serial == USER_MANAGED) return
+        settings.migrateUserToken(USER_MANAGED, serial)
+        folders.migrateUserToken(USER_MANAGED, serial)
     }
 
     private fun loadApps(): List<AppInfo> {
@@ -119,7 +143,7 @@ class AppRepository(private val context: Context, private val settings: Settings
             .mapTo(mutableSetOf()) { it.activityInfo.packageName }
 
         for (profile in userManager.userProfiles) {
-            val token = serializeUser(profile)
+            val token = context.serializeUser(profile)
             for (activity in launcherApps.getActivityList(null, profile)) {
                 val packageName = activity.applicationInfo.packageName
                 if (packageName == context.packageName || packageName in otherLaunchers) continue
@@ -158,7 +182,7 @@ class AppRepository(private val context: Context, private val settings: Settings
             setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
         }
         for (profile in launcherApps.profiles) {
-            val token = serializeUser(profile)
+            val token = context.serializeUser(profile)
             try {
                 launcherApps.getShortcuts(query, profile)?.forEach { shortcut ->
                     if (!shortcut.isPinned) return@forEach
@@ -216,17 +240,21 @@ class AppRepository(private val context: Context, private val settings: Settings
         return paths.sumOf { path -> runCatching { File(path).length() }.getOrDefault(0L) }
     }
 
-    /** Drops an uninstalled package from slots, pins, and hidden apps. */
-    private fun pruneRemovedPackage(packageName: String, userToken: String) {
-        val key = "$packageName|$userToken"
-        settings.pinnedApps = settings.pinnedApps.filter { it != key }
-        settings.hiddenApps = settings.hiddenApps.filter { it != key }.toSet()
+    /** Drops an uninstalled package from slots, pins, hidden apps, and folders. */
+    private suspend fun pruneRemovedPackage(packageName: String, userToken: String) {
+        fun matches(key: String): Boolean {
+            val parsed = AppKey.parse(key)
+            return parsed.packageName == packageName && parsed.userToken == userToken
+        }
+        settings.pinnedApps = settings.pinnedApps.filterNot(::matches)
+        settings.hiddenApps = settings.hiddenApps.filterNot(::matches).toSet()
         for (slot in 1..SettingsRepository.MAX_SLOTS) {
             val entry = settings.getSlot(slot)
             if (!entry.isFolder && entry.packageName == packageName && entry.userToken == userToken) {
                 settings.clearSlot(slot)
             }
         }
+        folders.removePackage(packageName, userToken)
     }
 
     /** Launches into the right profile via LauncherApps. */
