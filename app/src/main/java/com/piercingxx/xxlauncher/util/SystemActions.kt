@@ -90,7 +90,20 @@ fun openCameraApp(context: Context, options: android.os.Bundle? = null) {
     }
 }
 
+// XX Clock is this family's alarm app, so a tap on the clock widget should
+// open it whenever it is installed (same rule as weather → XX-Weather).
+internal const val PKG_XX_CLOCK = "com.piercingxx.xxclock"
+
 fun openAlarmApp(context: Context) {
+    val targeted = Intent(AlarmClock.ACTION_SHOW_ALARMS).setPackage(PKG_XX_CLOCK)
+    if (targeted.resolveActivity(context.packageManager) != null) {
+        try {
+            context.startActivity(targeted)
+            return
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to open XX Clock", e)
+        }
+    }
     try {
         context.startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS))
     } catch (e: Exception) {
@@ -112,9 +125,12 @@ fun openCalendarApp(context: Context) {
     }
 }
 
-// Android has no standard "open the weather app" intent, so probe the common
-// stock and third-party weather packages before falling back to a web search.
+// Android has no standard "open the weather app" intent, so probe known
+// weather packages before falling back to a web search. XX-Weather is first:
+// it is this family's weather app, so a tap on the weather widget should
+// open it whenever it is installed.
 private val WEATHER_PACKAGES = listOf(
+    "com.xx.weather",
     "com.google.android.apps.weather",
     "com.sec.android.daemonapp",
     "com.samsung.android.weather",

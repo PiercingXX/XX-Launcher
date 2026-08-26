@@ -546,7 +546,7 @@ the corresponding widget exists, and unregisters on detach. Weather is cached
 for 15 minutes; a cached reading always wins over "Loading…" so refreshes are
 invisible, and a failed refresh leaves the stale reading in place. Each widget
 supports a user-configured tap override, falling back to a sensible default
-(clock → alarms, date → calendar, weather → weather app).
+(clock → XX Clock / `SHOW_ALARMS`, date → calendar, weather → weather app).
 
 ### `com.piercingxx.xxlauncher.weather`
 
