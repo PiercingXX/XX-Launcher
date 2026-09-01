@@ -22,3 +22,6 @@ local.properties
 .kotlin/
 captures/
 *.apk
+
+# Skippy runtime bookkeeping — never tracked
+.skippy/
