@@ -514,10 +514,14 @@ Sender side of the family theme-sync contract. Broadcasts
 `"Custom"`) and `BACKGROUND` (the resolved ARGB, always present — the only way
 a receiver can honour Custom). Manifest receivers stopped getting implicit
 broadcasts at Android O, so one explicit copy goes out per package via
-`Intent.setPackage`, to the nine family apps in `FAMILY_PACKAGES`, restricted
-by the signature permission `com.piercingxx.xxlauncher.permission.THEME_SYNC`.
-Family apps must `uses-permission` that name (same signing key) or they will
-not receive the broadcast. Absent packages drop it; there is no reply.
+`Intent.setPackage`, to the fourteen family apps in `FAMILY_PACKAGES`. The
+launcher does **not** filter the send by a signature permission, because
+Weather, Vitals, and Nope-Mode are signed with different debug keys and could
+not hold one the launcher defines. Instead each receiver gates its own sender
+via its manifest `android:permission` (the launcher holds that permission).
+Family apps therefore do **not** need to share the launcher's signing key, and
+should not be told otherwise. Absent packages drop the broadcast; there is no
+reply.
 `payloads()` is the pure fan-out, so plain JUnit covers the mapping and the
 per-package delivery without Robolectric — only `broadcast()` touches the
 platform. `DISPLAY_NAMES` and `ThemeManager.presets` share their keys and
@@ -630,7 +634,7 @@ programmatically from `ThemeManager`.
 | `EXPAND_STATUS_BAR` | Swipe-down notification drawer |
 | `SET_WALLPAPER` | Mirror the theme colour onto the wallpaper |
 | `REQUEST_DELETE_PACKAGES` | "Uninstall" from the item action menu |
-| `com.piercingxx.xxlauncher.permission.THEME_SYNC` | Signature permission declared and held by the launcher; `sendBroadcast` requires receivers to hold it too |
+| `com.piercingxx.xxlauncher.permission.THEME_SYNC` | Signature permission declared and held by the launcher; kept for compatibility but **not** used to filter the theme send — each receiver gates its own sender via its own `android:permission` |
 
 `<queries>` declares the intents the launcher resolves against under Android 11+
 package visibility: MAIN/LAUNCHER (which makes every launchable app visible),

@@ -38,9 +38,12 @@ Every other XX app is a receiver; the launcher decides. Pick a preset in
 package with the preset name and the resolved background ARGB — the ARGB is the
 only way a receiver can honor `Custom`. Eight names in the contract: AMOLED
 Night, Graphite, Forest Night, Ocean Drift, Burgundy, Paper, Mist, Custom.
-The broadcast is signature-restricted
-(`com.piercingxx.xxlauncher.permission.THEME_SYNC`); family apps must
-`uses-permission` that name under the same signing key. Verified end to end
+The broadcast goes out one explicit copy per family package via
+`Intent.setPackage`; it is **not** filtered by a signature permission, because
+Weather, Vitals, and Nope-Mode are signed with different debug keys. Each
+receiver gates its own sender via its manifest `android:permission` (the
+launcher holds that permission), so family apps do not need to share the
+launcher's signing key. Verified end to end
 on a Pixel 6 under GrapheneOS: pick a preset here, the siblings repaint.
 
 ## Building 🧪

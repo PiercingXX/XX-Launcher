@@ -62,6 +62,10 @@ object ThemeBroadcaster {
         "com.piercingxx.xxdrive",
         "com.piercingxx.xxcalculator",
         "com.xx.weather",
+        "com.piercingxx.xxcontacts",
+        "com.piercingxx.xxfiles",
+        "dev.xxemail",
+        "com.piercingxx.xxkeyboard",
     )
 
     /** One theme-changed delivery: what goes into the [Intent] for [targetPackage]. */
