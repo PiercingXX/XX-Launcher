@@ -39,12 +39,15 @@
         </intent>
     </queries>
 
+    <!-- allowBackup=false matches the family (several siblings are false).
+         The launcher holds no credentials or sensitive data, and its own
+         BackupManager JSON export/import is the user-facing backup path, so
+         OS-level auto-backup is disabled and the backup_rule xml files are
+         unreferenced. -->
     <application
         android:name=".LauncherApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.Launcher"
