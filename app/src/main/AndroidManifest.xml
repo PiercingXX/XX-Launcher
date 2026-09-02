@@ -39,21 +39,11 @@
         </intent>
     </queries>
 
-<<<<<<< HEAD
     <!-- allowBackup=false matches the family (several siblings are false).
          The launcher holds no credentials or sensitive data, and its own
          BackupManager JSON export/import is the user-facing backup path, so
          OS-level auto-backup is disabled and the backup_rule xml files are
          unreferenced. -->
-=======
-    <!-- allowBackup decision (contract P2): the launcher's home layout,
-         folders, theme and settings ARE the user data worth carrying across
-         device transfer, and the scoped rules (xml/backup_rules.xml,
-         xml/data_extraction_rules.xml) include only shared prefs and
-         launcher.db — nothing sensitive. Several sibling apps keep
-         allowBackup=false for their own data; the launcher deliberately
-         stays true. -->
->>>>>>> c8a243c (T1 — Implement the scoped goal [laundry-bot loop 2])
     <application
         android:name=".LauncherApplication"
         android:allowBackup="false"
