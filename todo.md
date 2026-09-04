@@ -1,56 +1,71 @@
-# Review follow-up
+# XX-Launcher — Remaining work
 
-Work list from the full-app review of `main` @ `7486b09`. All items implemented.
+**2026-09-04.** Review follow-up @ `7486b09` is implemented. Remaining
+work is **device smoke + release packaging**, not a new feature surface.
 
-## Bugs
+Package: `com.piercingxx.xxlauncher`  
+Text-only AMOLED home. Theme **sender** for the family
+(`xx.launcher.THEME_CHANGED` + `THEME_SYNC`).
 
-- [x] **1. Do not prune layout on a failed lookup**
-  - `FolderManager.getMembers()` no longer deletes members when `LauncherApps.getActivityList` returns empty or throws.
-  - Resolve for display only; keep the stored key (including shortcut ids) when the package is not enumerable.
-  - `MainActivity.renderHomeSlots()` no longer clears a slot on a failed install check. Failed launch of a filled slot does not clear it either.
-  - Uninstall pruning: `AppRepository.onPackageRemoved` drops slots, pins, hidden apps, and folder members (including shortcut keys). Empty folders are deleted.
+```
+Status: home, drawer, folders, widgets, backup/restore, gestures, theme
+broadcast to 14 family packages. Release unsigned, unminified.
+Instrumented tests uninstall the app — do not run them on the daily driver.
+```
 
-- [x] **2. Restore is a replace, not a merge**
-  - Wipe folders, all `rename_*` keys, widget tap keys, and mute entries before applying a backup.
-  - Recreate folders from the file.
-  - Include muted packages in the JSON (`mutedApps`).
-  - After Gson `fromJson`, null-coalesce collections so a v1 file missing lists still loads. `BACKUP_VERSION` stays 1.
-  - On successful import, `SettingsActivity` calls `setAppearanceMode`, `applyWallpaper`, and `publish()`.
-  - JVM tests: sparse v1 JSON, mute round-trip, restore payload is the file's keys only.
+---
 
-- [x] **3. Home-slot shortcut keys hide the host app**
-  - `AppDrawerActivity.homeSlotKeys()` uses `RenamePropagator.renameKey` so a shortcut on home excludes that shortcut, not the host app.
+## Locked now (2026-09-04)
 
-- [x] **4. Expanded drawer folders duplicate members**
-  - Render generation + cancel the previous member-load job. Stale coroutines do not insert.
+| ID | Decision |
+|---|---|
+| L1 | Device smoke **is** the remaining product work. Known limitations L-1–L-8 in MANUAL.md stay limitations unless reopened here. |
+| L2 | Theme send does **not** require the same signing key (Weather / Vitals / Nope-Mode debug keys differ). Receivers gate on the permission name. |
 
-- [x] **5. Default-launcher dialog stacks**
-  - Track the showing dialog; persist `hideDefaultLauncherPrompt` on cancel / tap-outside; do not restack after “Set default” in the same session.
+---
 
-- [x] **6. Failed swipe target must not fall through to camera/dialer**
-  - Camera (left) / dialer (right) only when the configured target is null or blank.
+## Device smoke
 
-## Suggestions
+- [ ] Set as default HOME on caiman. Cold boot lands here, not Pixel Launcher.
+- [ ] Eight home slots + one folder: launch, rename, remove. Failed launch does not clear the slot.
+- [ ] Drawer search + `!query`. Hidden apps stay hidden across reboot.
+- [ ] Swipe L/R (camera / dialer), swipe down, swipe up drawer, double-tap lock.
+- [ ] Clock / date / weather / battery widgets. Clock widget opens **xx-clock**, not a chooser.
+- [ ] Change theme → family apps that are aligned restyle (calculator, weather, clock, files once F2 lands, email once aligned).
+- [ ] Backup JSON → wipe launcher data → restore is a **replace**, including mutes.
+- [ ] Recents / lock toasts: missing accessibility vs unsupported SDK are distinct.
 
-- [x] **7. Stable per-profile user tokens**
-  - `personal` for this user, `u{serial}` for others; `"managed"` still resolves and is migrated on first load.
-  - `AppInfo.isWorkProfile` is any non-personal token.
+**Accept:** dated notes. Then this is daily-driver home.
 
-- [x] **8. Sign the theme broadcast**
-  - Signature permission `com.piercingxx.xxlauncher.permission.THEME_SYNC`; `sendBroadcast(intent, permission)`.
-  - Family apps must `uses-permission` the same name (same signing key). Constant locked in `ThemeBroadcasterTest`.
+---
 
-- [x] **9. Actually test Room migrations**
-  - `MIGRATION_1_2` / `MIGRATION_2_3` exported; instrumented `FolderMigrationTest` with `MigrationTestHelper`.
-  - `FolderOrderTest` KDoc no longer claims it covers schema migration.
+## Release
 
-- [x] **10. Lock / recents feedback**
-  - Hide “Double Tap to Lock” below API 28.
-  - Distinct toast for unsupported SDK vs missing accessibility service.
-  - Home-to-recents toasts and deep-links to accessibility settings when `openRecents()` returns false.
+- [ ] Signing config for a non-debug APK (keystore gitignored).
+- [ ] Decide minify: default **off** (MANUAL L-8) unless a size problem appears.
+- [ ] CI: `./gradlew testDebugUnitTest` on push. Do **not** run the instrumented suite on a provisioned phone (it uninstalls).
 
-## Docs and ship
+---
 
-- [x] Update `MANUAL.md` (prune-on-read, replace restore, signed theme IPC, serial profile tokens, tests).
-- [x] `./gradlew testDebugUnitTest` — 47 passed.
-- [x] Commit and push.
+## Family list hygiene
+
+- [ ] `ThemeBroadcaster.FAMILY_PACKAGES` stays in sync as apps ship.
+  Today includes keyboard, email, files — add only real packages.
+- [ ] After xx-email theme align: verify email actually restyles.
+
+---
+
+## Do not start unless reopened
+
+- Shortcut-in-folder launches the shortcut (L-1)
+- Backup format v2
+- Notification-drawer reflection rewrite (L-6)
+
+---
+
+## Stop conditions
+
+- Analytics → reject.
+- Requiring same signing key on send → reject (breaks mixed debug keys).
+- Running instrumented tests on the daily driver → reject.
+- Inventing a new home metaphor → reject.
