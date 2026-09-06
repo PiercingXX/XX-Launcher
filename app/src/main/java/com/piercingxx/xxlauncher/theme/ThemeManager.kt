@@ -81,6 +81,9 @@ class ThemeManager(private val context: Context, private val settingsRepo: Setti
         when (mode) {
             "light" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
             "dark" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+            // Launcher chrome only. Family apps never follow the OS clock;
+            // their ground comes from the preset. Paper + system-dark is a
+            // local launcher choice, not a family theme.
             "system" -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
     }

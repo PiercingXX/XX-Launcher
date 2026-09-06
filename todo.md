@@ -31,7 +31,7 @@ Instrumented tests uninstall the app — do not run them on the daily driver.
 - [ ] Drawer search + `!query`. Hidden apps stay hidden across reboot.
 - [ ] Swipe L/R (camera / dialer), swipe down, swipe up drawer, double-tap lock.
 - [ ] Clock / date / weather / battery widgets. Clock widget opens **xx-clock**, not a chooser.
-- [ ] Change theme → family apps that are aligned restyle (calculator, weather, clock, files once F2 lands, email once aligned).
+- [ ] Change theme → family apps restyle (calculator, weather, clock, files, email, keyboard IME chrome).
 - [ ] Backup JSON → wipe launcher data → restore is a **replace**, including mutes.
 - [ ] Recents / lock toasts: missing accessibility vs unsupported SDK are distinct.
 
@@ -42,16 +42,16 @@ Instrumented tests uninstall the app — do not run them on the daily driver.
 ## Release
 
 - [ ] Signing config for a non-debug APK (keystore gitignored).
-- [ ] Decide minify: default **off** (MANUAL L-8) unless a size problem appears.
-- [ ] CI: `./gradlew testDebugUnitTest` on push. Do **not** run the instrumented suite on a provisioned phone (it uninstalls).
+- [x] Decide minify: default **off** (MANUAL L-8) unless a size problem appears.
+- [x] CI: `./gradlew testDebugUnitTest` on push (`.github/workflows/ci.yml`). Do **not** run the instrumented suite on a provisioned phone (it uninstalls).
 
 ---
 
 ## Family list hygiene
 
-- [ ] `ThemeBroadcaster.FAMILY_PACKAGES` stays in sync as apps ship.
-  Today includes keyboard, email, files — add only real packages.
-- [ ] After xx-email theme align: verify email actually restyles.
+- [x] `ThemeBroadcaster.FAMILY_PACKAGES` includes contacts, files, email,
+  keyboard, and `com.piercingxx.xxkeyboard.debug`. Add only real packages.
+- [ ] After xx-email theme align: verify email actually restyles **on device**.
 
 ---
 

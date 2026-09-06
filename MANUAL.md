@@ -503,7 +503,10 @@ Night, Ocean Drift, Burgundy, Paper, Mist, per BRAND-GUIDE §3.3 — plus a
 `custom` mode whose text colour is chosen by luminance (>182 → ink).
 `applyWallpaper()` mirrors the background colour onto the system wallpaper as a
 1×1 bitmap so app-switch animations blend with the launcher.
-`setAppearanceMode()` drives `AppCompatDelegate` night mode. `publish()` hands
+`setAppearanceMode()` drives `AppCompatDelegate` night mode for **this
+app's chrome only**. `system` → `MODE_NIGHT_FOLLOW_SYSTEM` can disagree
+with siblings, which never read the OS clock; family ground is the
+preset. Paper + system-dark is a local launcher choice. `publish()` hands
 the effective theme to `ThemeBroadcaster`; call it after every change that
 moves the theme, and it also runs once from `LauncherApplication` on start so
 freshly installed or rebooted family apps converge.
