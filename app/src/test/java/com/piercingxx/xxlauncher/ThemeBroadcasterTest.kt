@@ -80,6 +80,7 @@ class ThemeBroadcasterTest {
             "com.piercingxx.xxfiles",
             "dev.xxemail",
             "com.piercingxx.xxkeyboard",
+            "com.piercingxx.xxkeyboard.debug",
         )
         assertEquals(expected, ThemeBroadcaster.FAMILY_PACKAGES)
         assertEquals(expected.size, ThemeBroadcaster.FAMILY_PACKAGES.distinct().size)

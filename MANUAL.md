@@ -514,14 +514,14 @@ Sender side of the family theme-sync contract. Broadcasts
 `"Custom"`) and `BACKGROUND` (the resolved ARGB, always present — the only way
 a receiver can honour Custom). Manifest receivers stopped getting implicit
 broadcasts at Android O, so one explicit copy goes out per package via
-`Intent.setPackage`, to the fourteen family apps in `FAMILY_PACKAGES`. The
-launcher does **not** filter the send by a signature permission, because
-Weather, Vitals, and Nope-Mode are signed with different debug keys and could
-not hold one the launcher defines. Instead each receiver gates its own sender
-via its manifest `android:permission` (the launcher holds that permission).
-Family apps therefore do **not** need to share the launcher's signing key, and
-should not be told otherwise. Absent packages drop the broadcast; there is no
-reply.
+`Intent.setPackage`, to every package in `FAMILY_PACKAGES` (fifteen ids:
+fourteen apps, plus `com.piercingxx.xxkeyboard.debug` because keyboard debug
+builds keep `applicationIdSuffix ".debug"`). Send is `sendBroadcast(intent)`
+with per-package `setPackage`; receivers gate via `android:permission`; mixed
+debug keys are OK. The launcher does **not** filter the send by a signature
+permission, because Weather, Vitals, and Nope-Mode are signed with different
+debug keys and could not hold one the launcher defines. Absent packages drop
+the broadcast; there is no reply.
 `payloads()` is the pure fan-out, so plain JUnit covers the mapping and the
 per-package delivery without Robolectric — only `broadcast()` touches the
 platform. `DISPLAY_NAMES` and `ThemeManager.presets` share their keys and

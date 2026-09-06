@@ -17,9 +17,9 @@ import android.content.Intent
  *    included — it is the only way receivers can honor "Custom".
  *
  * Manifest-declared receivers do not get implicit broadcasts since Android O,
- * so one explicit copy is sent per family package via [Intent.setPackage],
- * restricted by the signature permission [PERMISSION_THEME_SYNC]. Family
- * apps must `uses-permission` that name (same signing key).
+ * so one explicit copy is sent per family package. Send is
+ * [Context.sendBroadcast] plus [Intent.setPackage]; receivers gate via
+ * `android:permission`. Mixed debug keys are OK.
  *
  * The payload fan-out ([payloads]) is pure Kotlin so plain JUnit can verify
  * the mapping and per-package delivery without Robolectric; only [broadcast]
@@ -66,6 +66,8 @@ object ThemeBroadcaster {
         "com.piercingxx.xxfiles",
         "dev.xxemail",
         "com.piercingxx.xxkeyboard",
+        // Debug builds keep applicationIdSuffix ".debug"; fan out both ids.
+        "com.piercingxx.xxkeyboard.debug",
     )
 
     /** One theme-changed delivery: what goes into the [Intent] for [targetPackage]. */
