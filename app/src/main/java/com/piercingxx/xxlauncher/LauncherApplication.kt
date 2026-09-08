@@ -2,6 +2,7 @@ package com.piercingxx.xxlauncher
 
 import android.app.Application
 import android.content.Context
+import com.piercingxx.xxlauncher.log.AppLog
 import com.piercingxx.xxlauncher.data.AppRepository
 import com.piercingxx.xxlauncher.data.SettingsRepository
 import com.piercingxx.xxlauncher.folder.FolderManager
@@ -17,6 +18,9 @@ class LauncherApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLog.init(this)
+        AppLog.installCrashHandler()
+        AppLog.i("app", "start")
         themeManager.setAppearanceMode(settings.appearanceMode)
         // Publish the active theme once at startup so freshly installed or
         // rebooted family apps converge without waiting for a manual change.
