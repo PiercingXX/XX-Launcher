@@ -25,6 +25,7 @@ import com.piercingxx.xxlauncher.util.hideStatusBar
 import com.piercingxx.xxlauncher.util.showStatusBar
 import com.piercingxx.xxlauncher.backup.BackupManager
 import com.piercingxx.xxlauncher.data.SettingsRepository
+import com.piercingxx.xxlauncher.log.LogsUi
 import com.piercingxx.xxlauncher.settings.ThemePreviewPreference
 import com.piercingxx.xxlauncher.theme.FontImportResult
 import com.piercingxx.xxlauncher.theme.LauncherFont
@@ -282,6 +283,10 @@ class SettingsActivity : AppCompatActivity() {
             }
             updateSwipeSummaries()
             findPreference<Preference>("version")?.summary = BuildConfig.VERSION_NAME
+            findPreference<Preference>("logs")?.setOnPreferenceClickListener {
+                LogsUi.show(requireActivity())
+                true
+            }
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
                 findPreference<Preference>("double_tap_lock")?.isVisible = false
             }

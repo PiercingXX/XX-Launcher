@@ -221,6 +221,12 @@
             android:title="Version"
             app:iconSpaceReserved="false" />
 
+        <Preference
+            android:key="logs"
+            android:title="Logs"
+            android:summary="Copy or share on-phone crash logs"
+            app:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 
 </PreferenceScreen>
