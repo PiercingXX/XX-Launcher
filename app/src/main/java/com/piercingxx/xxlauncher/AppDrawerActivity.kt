@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.data.AppInfo
 import com.piercingxx.xxlauncher.data.AppRepository
@@ -23,6 +24,7 @@ import com.piercingxx.xxlauncher.folder.FolderWithCount
 import com.piercingxx.xxlauncher.menu.ItemActionMenu
 import com.piercingxx.xxlauncher.theme.ThemeManager
 import com.piercingxx.xxlauncher.theme.applyLauncherFont
+import com.piercingxx.xxlauncher.util.ImeLift
 import com.piercingxx.xxlauncher.util.hideKeyboard
 import com.piercingxx.xxlauncher.util.hideNavigationBar
 import com.piercingxx.xxlauncher.util.hideStatusBar
@@ -62,7 +64,9 @@ class AppDrawerActivity : AppCompatActivity() {
         themeManager = app.themeManager
         itemMenu = ItemActionMenu(this, appRepo, settings, themeManager, app.folders)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_app_drawer)
+        ImeLift.attach(findViewById(R.id.drawerRoot))
         drawerContainer = findViewById(R.id.drawerContainer)
         searchEditText = findViewById(R.id.searchEditText)
         appListContainer = findViewById(R.id.appListContainer)

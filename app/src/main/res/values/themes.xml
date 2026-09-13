@@ -35,8 +35,10 @@
         <item name="android:windowSplashScreenBrandingImage">@null</item>
     </style>
 
-    <!-- Drawer: translucent so the home screen shows through the top strip;
-         no fullscreen flag so adjustResize lifts search above the IME -->
+    <!-- Drawer: translucent so the home screen shows through the top strip.
+         Translucent windows do not resize for the IME — AppDrawerActivity
+         pads drawerRoot with IME insets instead. Fullscreen stays off so
+         those insets are actually delivered. -->
     <style name="Theme.Launcher.Drawer" parent="Theme.Launcher">
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowIsTranslucent">true</item>
