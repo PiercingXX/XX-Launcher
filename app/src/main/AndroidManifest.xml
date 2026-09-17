@@ -125,6 +125,15 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".theme.ThemeSyncReceiver"
+            android:exported="true"
+            android:permission="com.piercingxx.xxlauncher.permission.THEME_SYNC">
+            <intent-filter>
+                <action android:name="xx.launcher.THEME_CHANGED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

@@ -3,7 +3,10 @@ package com.piercingxx.xxlauncher
 import com.piercingxx.xxlauncher.theme.ThemeBroadcaster
 import com.piercingxx.xxlauncher.theme.ThemeColors
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.piercingxx.xxlauncher.theme.SuiteThemeClient
+import com.piercingxx.xxlauncher.theme.ThemeSyncReceiver
 import org.junit.Test
 
 /**
@@ -81,8 +84,35 @@ class ThemeBroadcasterTest {
             "dev.xxemail",
             "com.piercingxx.xxkeyboard",
             "com.piercingxx.xxkeyboard.debug",
+            "com.piercingxx.apps",
+            "com.piercingxx.camera",
+            "com.piercingxx.photos",
+            "com.piercingxx.xxauth",
+            "com.piercingxx.audiobook",
+            "com.skpp.radio",
         )
         assertEquals(expected, ThemeBroadcaster.FAMILY_PACKAGES)
         assertEquals(expected.size, ThemeBroadcaster.FAMILY_PACKAGES.distinct().size)
+    }
+
+    @Test
+    fun `display names invert back to preset keys`() {
+        assertEquals("ocean", ThemeBroadcaster.presetKeyFromDisplayName("Ocean Drift"))
+        assertEquals("custom", ThemeBroadcaster.presetKeyFromDisplayName("Custom"))
+        assertEquals(
+            "xx.apps.SET_SUITE_THEME",
+            SuiteThemeClient.ACTION_SET_SUITE_THEME,
+        )
+    }
+
+    @Test
+    fun `incoming suite fan-out is applied locally without looping`() {
+        val incoming = ThemeSyncReceiver.handle(
+            action = ThemeBroadcaster.ACTION_THEME_CHANGED,
+            themeName = "Paper",
+            background = 0xFFF3EEE2.toInt(),
+        )
+        assertEquals("paper", incoming!!.presetKey)
+        assertNull(ThemeSyncReceiver.handle(action = "android.intent.action.BOOT_COMPLETED", themeName = "Paper", background = 1))
     }
 }
