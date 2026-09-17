@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * SENDER side of the family-wide theme sync contract.
+ * Fallback sender when xx-apps is not installed. The suite engine now
+ * lives in xx-apps ([SuiteThemeClient]); this object stays so a phone
+ * without the store still fans out THEME_CHANGED.
  *
  * When the launcher's effective theme changes it broadcasts
  * [ACTION_THEME_CHANGED] carrying:
@@ -68,6 +70,12 @@ object ThemeBroadcaster {
         "com.piercingxx.xxkeyboard",
         // Debug builds keep applicationIdSuffix ".debug"; fan out both ids.
         "com.piercingxx.xxkeyboard.debug",
+        "com.piercingxx.apps",
+        "com.piercingxx.camera",
+        "com.piercingxx.photos",
+        "com.piercingxx.xxauth",
+        "com.piercingxx.audiobook",
+        "com.skpp.radio",
     )
 
     /** One theme-changed delivery: what goes into the [Intent] for [targetPackage]. */
@@ -80,6 +88,16 @@ object ThemeBroadcaster {
     /** Maps an internal preset key ("amoled", "custom", ...) to its display name. */
     fun displayName(presetKey: String): String =
         DISPLAY_NAMES[presetKey] ?: CUSTOM_DISPLAY_NAME
+
+    /** Inverse of [displayName] for incoming suite fan-out. */
+    fun presetKeyFromDisplayName(name: String?): String? {
+        if (name.isNullOrBlank()) return null
+        val trimmed = name.trim()
+        if (CUSTOM_DISPLAY_NAME.equals(trimmed, ignoreCase = true)) return "custom"
+        return DISPLAY_NAMES.entries.firstOrNull {
+            it.value.equals(trimmed, ignoreCase = true)
+        }?.key
+    }
 
     /** The full per-package fan-out for one theme change. Pure; JVM-testable. */
     fun payloads(presetKey: String, colors: ThemeColors): List<Payload> {

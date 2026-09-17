@@ -58,7 +58,9 @@ class ThemeManager(private val context: Context, private val settingsRepo: Setti
      * freshly installed/rebooted family apps converge.
      */
     fun publish() {
-        ThemeBroadcaster.broadcast(context, settingsRepo.themePreset, getCurrentColors())
+        val colors = getCurrentColors()
+        if (SuiteThemeClient.request(context, settingsRepo.themePreset, colors)) return
+        ThemeBroadcaster.broadcast(context, settingsRepo.themePreset, colors)
     }
 
     /**
