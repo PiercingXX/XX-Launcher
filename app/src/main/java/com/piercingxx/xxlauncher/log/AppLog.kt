@@ -1,6 +1,10 @@
 package com.piercingxx.xxlauncher.log
 
 import android.content.Context
+import android.app.Activity
+import android.app.Application
+import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -100,11 +104,11 @@ object AppLog {
             ts = System.currentTimeMillis(),
             level = Level.E,
             tag = "crash",
-            message = t.toString(),
+            message = redact(t.toString()),
             trace = t.stackTraceToString(),
         )
         pushRing(header)
-        logcat?.invoke(Level.E, "crash", t.toString(), t)
+        logcat?.invoke(Level.E, "crash", header.message, t)
         val text = buildString {
             appendLine(format(header))
             header.trace?.let { appendLine(it) }
@@ -155,16 +159,51 @@ object AppLog {
         logcat = null
     }
 
+
+    fun installFieldDiagnostics(app: Application) {
+        installCrashHandler()
+        val pkg = app.packageName
+        val info = runCatching { app.packageManager.getPackageInfo(pkg, 0) }.getOrNull()
+        @Suppress("DEPRECATION")
+        val code = info?.versionCode ?: 0
+        i("diag", "start sdk=${Build.VERSION.SDK_INT} pkg=$pkg v=${info?.versionName ?: "?"} code=$code")
+        i("diag", "device=${Build.MANUFACTURER} ${Build.MODEL}")
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(a: Activity, b: Bundle?) {
+                i("life", "create ${a.javaClass.simpleName}")
+            }
+            override fun onActivityStarted(a: Activity) {}
+            override fun onActivityResumed(a: Activity) {
+                i("life", "resume ${a.javaClass.simpleName}")
+            }
+            override fun onActivityPaused(a: Activity) {}
+            override fun onActivityStopped(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) {
+                i("life", "destroy ${a.javaClass.simpleName}")
+            }
+        })
+    }
+
+    internal fun redact(message: String): String {
+        var s = message
+        s = Regex("Bearer\\s+\\S+", RegexOption.IGNORE_CASE).replace(s, "Bearer ***")
+        s = Regex("(?i)(password|passwd|secret|token|otp|pin)\\s*[=:]\\s*\\S+").replace(s, "$1=***")
+        s = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[A-Za-z]{2,}").replace(s, "***@***")
+        s = Regex("otpauth://\\S+", RegexOption.IGNORE_CASE).replace(s, "otpauth://***")
+        return s
+    }
+
     private fun emit(level: Level, tag: String, message: String, t: Throwable?) {
         val line = Line(
             ts = System.currentTimeMillis(),
             level = level,
             tag = tag,
-            message = message,
+            message = redact(message),
             trace = t?.stackTraceToString(),
         )
         pushRing(line)
-        logcat?.invoke(level, tag, message, t)
+        logcat?.invoke(level, tag, line.message, t)
         writer.execute {
             runCatching { appendFile(line) }
         }
