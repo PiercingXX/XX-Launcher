@@ -19,12 +19,12 @@ class LauncherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLog.init(this)
-        AppLog.installCrashHandler()
-        AppLog.i("app", "start")
+        AppLog.installFieldDiagnostics(this)
         themeManager.setAppearanceMode(settings.appearanceMode)
         // Publish the active theme once at startup so freshly installed or
         // rebooted family apps converge without waiting for a manual change.
         themeManager.publish()
+        AppLog.i("theme", "published")
     }
 
     companion object {
