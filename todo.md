@@ -15,6 +15,14 @@ Instrumented tests uninstall the app — do not run them on the daily driver.
 
 ---
 
+## Estate (locked 2026-09-20)
+
+No fabric login here — the launcher is the home shell and theme **sender**,
+not a door client. xx-apps catalogs this package and may uninstall it when
+the Skippy user is disabled. Suite backup (`SuiteBackupProvider` → xx-apps →
+skippy-tel) is the phone snapshot of launcher layout/prefs. No per-app
+`:845x` in the UX.
+
 ## Locked now (2026-09-04)
 
 | ID | Decision |
@@ -70,9 +78,10 @@ Instrumented tests uninstall the app — do not run them on the daily driver.
 - Running instrumented tests on the daily driver → reject.
 - Inventing a new home metaphor → reject.
 
-- [ ] SMOKE — the app fails its emulator smoke run
-  - reason: no launcher activity: the manifest declares no MAIN/LAUNCHER activity
-  - files: app/src/main/AndroidManifest.xml, app/src/main/java, app/src/test/java
+- [ ] SMOKE — emulator/device still open. Code fix landed: MAIN/LAUNCHER on
+  `MainActivity` so the app is startable before it is set as HOME (HOME
+  remains the product filter). Prior fail was "no MAIN/LAUNCHER activity".
+  - files: app/src/main/AndroidManifest.xml
   - verify: python3 /home/piercingxx/.skippy/app/scripts/android_smoke.py . 2>&1 | tail -1 | grep -q 'SMOKE PASS'
 
 ---
@@ -83,7 +92,7 @@ Package `com.piercingxx.xxlauncher`. Default-on. Theme **sender** for the
 family. No fabric login. xx-apps may uninstall this APK when the Skippy
 user is disabled.
 
-- [ ] L-E1 — Package id frozen for the store seed. Keep broadcasting
+- [x] L-E1 — Package id frozen for the store seed. Keep broadcasting
       `THEME_CHANGED` to the seeded catalog packages.
 
 ## BACKUP wave (operator lock 2026-09-20)
