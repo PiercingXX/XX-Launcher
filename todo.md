@@ -78,11 +78,9 @@ skippy-tel) is the phone snapshot of launcher layout/prefs. No per-app
 - Running instrumented tests on the daily driver → reject.
 - Inventing a new home metaphor → reject.
 
-- [ ] SMOKE — emulator/device still open. Code fix landed: MAIN/LAUNCHER on
-  `MainActivity` so the app is startable before it is set as HOME (HOME
-  remains the product filter). Prior fail was "no MAIN/LAUNCHER activity".
-  - files: app/src/main/AndroidManifest.xml
-  - verify: python3 /home/piercingxx/.skippy/app/scripts/android_smoke.py . 2>&1 | tail -1 | grep -q 'SMOKE PASS'
+- [x] SMOKE — the app passes its emulator smoke run
+  - verify: python3 /home/piercingxx/.skippy/app/scripts/android_smoke.py . --avd skippy-smoke-35 --port 5610 2>&1 | tail -1 | grep -q 'SMOKE PASS'
+  - note: 2026-09-20 Dutchman PASS after MAIN/LAUNCHER + manifest package=.
 
 ---
 
