@@ -131,7 +131,14 @@ class Snapshot(private val dataDir: File) {
                 }
             }
             // Swap in. Prefs and databases replace wholesale; files merge.
-            swapDir(File(staging, "prefs"), sharedPrefsDir, wipeTarget = true)
+            // `prefs/datastore/*` came from files/datastore and goes back there;
+            // the rest of `prefs/` is shared_prefs.
+            File(staging, "prefs").takeIf { it.isDirectory }?.let { stagedPrefs ->
+                swapDir(File(stagedPrefs, "datastore"), File(filesDir, "datastore"), wipeTarget = true)
+                sharedPrefsDir.listFiles()?.forEach { it.deleteRecursively() }
+                sharedPrefsDir.mkdirs()
+                stagedPrefs.listFiles()?.filter { it.isFile }?.forEach { it.copyTo(File(sharedPrefsDir, it.name), overwrite = true) }
+            }
             File(staging, "db").takeIf { it.isDirectory }?.let { staged ->
                 databasesDir.listFiles()?.forEach { if (it.isFile) it.delete() }
                 databasesDir.mkdirs()
