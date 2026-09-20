@@ -11,6 +11,10 @@
     <string name="pref_category_gestures">Gestures</string>
     <string name="pref_category_theme">Theme</string>
     <string name="pref_category_backup">Backup &amp; Restore</string>
+    <string name="pref_reset_home_layout">Reset home layout</string>
+    <string name="pref_reset_home_layout_summary">Clear the home screen and folders and seed the suite defaults again</string>
+    <string name="reset_home_layout_confirm">Replace your home screen with the suite defaults? Folders and slot order are reset; hidden apps and the theme are kept.</string>
+    <string name="toast_home_layout_reset">Home layout reset</string>
     
     <!-- Actions -->
     <string name="action_app_info">App Info</string>

@@ -61,25 +61,31 @@ class DefaultLayoutSeederTest {
         )
 
         assertEquals(
-            listOf("Notes", "Audio", "Comms", "Calendar", "Tools"),
+            listOf("com.google.android.keep", "Audio", "Comms", "com.google.android.calendar", "Tools"),
             plan.slots.map { it.label },
         )
         assertEquals(
-            listOf("Audiobook", "Music"),
-            plan.slots[1].folderMembers.map { it.label },
+            listOf("com.audiobookshelf.app", "com.google.android.apps.youtube.music"),
+            plan.slots[1].folderMembers.map { it.packageName },
         )
         assertEquals(
-            listOf("Phone", "Text", "Email", "Chat", "SoftPhone"),
-            plan.slots[2].folderMembers.map { it.label },
+            listOf(
+                "com.google.android.dialer", "com.google.android.apps.messaging",
+                "com.google.android.gm", "com.synology.dschat", "cz.acrobits.softphone.cloudphone",
+            ),
+            plan.slots[2].folderMembers.map { it.packageName },
         )
         assertEquals(
-            listOf("Waterfox", "Calculator", "Camera", "Photos"),
-            plan.slots[4].folderMembers.map { it.label },
+            listOf(
+                "net.waterfox.android.release", "com.google.android.calculator",
+                "com.google.android.GoogleCamera", "com.synology.projectkailash",
+            ),
+            plan.slots[4].folderMembers.map { it.packageName },
         )
         assertEquals("app.skippy.pwa", plan.swipeLeft?.packageName)
         assertEquals("com.google.android.GoogleCamera", plan.swipeRight?.packageName)
-        assertEquals("Notes", plan.renameLabels["com.google.android.keep"])
-        assertEquals("Music", plan.renameLabels["com.google.android.apps.youtube.music"])
+        // Apps keep their own names: the seeder never renames.
+        assertTrue(plan.renameLabels.isEmpty())
         assertTrue(plan.hiddenPackages.contains("com.google.android.youtube"))
     }
 
@@ -91,7 +97,6 @@ class DefaultLayoutSeederTest {
 
         // Only Comms survives: just the dialer resolved via package fallback.
         assertEquals(listOf("Comms"), plan.slots.map { it.label })
-        assertEquals(listOf("Phone"), plan.slots[0].folderMembers.map { it.label })
         assertEquals("com.android.dialer", plan.slots[0].folderMembers[0].packageName)
         assertNull(plan.swipeLeft)
         assertNull(plan.swipeRight)
@@ -111,9 +116,9 @@ class DefaultLayoutSeederTest {
         )
 
         val comms = plan.slots.first { it.label == "Comms" }
-        assertEquals(listOf("Phone", "Text"), comms.folderMembers.map { it.label })
+        assertEquals(listOf("com.android.dialer", "com.android.messaging"), comms.folderMembers.map { it.packageName })
         val tools = plan.slots.first { it.label == "Tools" }
-        assertEquals(listOf("Calculator", "Camera"), tools.folderMembers.map { it.label })
+        assertEquals(listOf("com.android.calculator2", "com.android.camera2"), tools.folderMembers.map { it.packageName })
         assertEquals("com.android.camera2", plan.swipeRight?.packageName)
     }
 
@@ -134,6 +139,7 @@ class DefaultLayoutSeederTest {
             installed = setOf(
                 "com.piercingxx.xxnote", "com.google.android.keep",
                 "com.piercingxx.audiobook", "com.audiobookshelf.app",
+                "com.skpp.radio", "com.google.android.apps.youtube.music",
                 "com.piercingxx.xxdialer", "com.google.android.dialer",
                 "com.piercingxx.txxt", "com.google.android.apps.messaging",
                 "dev.xxemail", "com.google.android.gm",
@@ -149,21 +155,20 @@ class DefaultLayoutSeederTest {
             calculator = "com.google.android.calculator",
         )
         val plan = DefaultLayoutSeeder.plan(resolver)
-        val byLabel = plan.slots.flatMap { slot ->
-            slot.app?.let { listOf(slot.label to it.packageName) }
-                ?: slot.folderMembers.map { it.label to it.packageName }
-        }.toMap()
-        assertEquals("com.piercingxx.xxnote", byLabel["Notes"])
-        assertEquals("com.piercingxx.audiobook", byLabel["Audiobook"])
-        assertEquals("com.piercingxx.xxdialer", byLabel["Phone"])
-        assertEquals("com.piercingxx.txxt", byLabel["Text"])
-        assertEquals("dev.xxemail", byLabel["Email"])
-        assertEquals("com.mattermost.rn", byLabel["Chat"])
-        assertEquals("com.piercingxx.calendar", byLabel["Calendar"])
-        assertEquals("com.piercingxx.xxcalculator", byLabel["Calculator"])
-        assertEquals("com.piercingxx.camera", byLabel["Camera"])
-        assertEquals("com.piercingxx.photos", byLabel["Photos"])
+        val seeded = plan.slots.flatMap { slot ->
+            slot.app?.let { listOf(it.packageName) } ?: slot.folderMembers.map { it.packageName }
+        }
+        assertEquals(
+            listOf(
+                "com.piercingxx.xxnote",
+                "com.piercingxx.audiobook", "com.skpp.radio",
+                "com.piercingxx.xxdialer", "com.piercingxx.txxt", "dev.xxemail", "com.mattermost.rn",
+                "com.piercingxx.calendar",
+                "com.piercingxx.xxcalculator", "com.piercingxx.camera", "com.piercingxx.photos",
+            ),
+            seeded,
+        )
         assertEquals("com.piercingxx.camera", plan.swipeRight?.packageName)
-        assertEquals("Notes", plan.renameLabels["com.piercingxx.xxnote"])
+        assertTrue(plan.renameLabels.isEmpty())
     }
 }

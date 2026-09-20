@@ -14,20 +14,21 @@ import kotlinx.coroutines.withContext
 /**
  * Seeds the out-of-the-box home screen on first launch. Every slot prefers
  * the PiercingXX suite app and falls back to the stock or third-party app
- * only when the suite one is not installed:
+ * only when the suite one is not installed. Apps keep their own names; the
+ * seeder never renames them.
  *
- *   Notes             -> xx-note, else Google Keep
- *   Audio    (folder) -> Audiobook (xx-audiobook, else Audiobookshelf),
- *                        Music (YouTube Music)
- *   Comms    (folder) -> Phone (xx-dialer, else the default dialer),
- *                        Text (Txxt, else the default SMS app),
- *                        Email (xx-email, else Gmail),
- *                        Chat (Mattermost, else Synology Chat),
- *                        SoftPhone (Cloud Softphone)
- *   Calendar          -> xx-calendar, else Google Calendar
- *   Tools    (folder) -> Waterfox, Calculator (xx-calculator, else system),
- *                        Camera (xx-camera, else the default camera),
- *                        Photos (xx-photos, else Synology Photos)
+ *   notes             -> xx-note, else Google Keep
+ *   Audio    (folder) -> xx-audiobook else Audiobookshelf,
+ *                        SKPP Radio else YouTube Music
+ *   Comms    (folder) -> xx-dialer else the default dialer,
+ *                        Txxt else the default SMS app,
+ *                        xx-email else Gmail,
+ *                        Mattermost else Synology Chat,
+ *                        Cloud Softphone
+ *   calendar          -> xx-calendar, else Google Calendar
+ *   Tools    (folder) -> Waterfox, xx-calculator else the system calculator,
+ *                        xx-camera else the default camera,
+ *                        xx-photos else Synology Photos
  *
  * Swipe left opens Skippy (matched by app label — it installs as a PWA so
  * its package name varies); swipe right opens the camera. Members that don't
@@ -55,6 +56,7 @@ object DefaultLayoutSeeder {
     // Suite apps come first everywhere they align with a default.
     private const val PKG_XX_NOTE = "com.piercingxx.xxnote"
     private const val PKG_XX_AUDIOBOOK = "com.piercingxx.audiobook"
+    private const val PKG_SKPP_RADIO = "com.skpp.radio"
     private const val PKG_XX_DIALER = "com.piercingxx.xxdialer"
     private const val PKG_TXXT = "com.piercingxx.txxt"
     private const val PKG_XX_EMAIL = "dev.xxemail"
@@ -113,30 +115,30 @@ object DefaultLayoutSeeder {
     )
 
     fun plan(resolver: AppResolver): Plan {
-        val notes = fallback(resolver, listOf(PKG_XX_NOTE, PKG_KEEP))?.copy(label = "Notes")
-        val calendar = fallback(resolver, listOf(PKG_XX_CALENDAR, PKG_CALENDAR))?.copy(label = "Calendar")
+        val notes = fallback(resolver, listOf(PKG_XX_NOTE, PKG_KEEP))
+        val calendar = fallback(resolver, listOf(PKG_XX_CALENDAR, PKG_CALENDAR))
 
         val audio = listOfNotNull(
-            fallback(resolver, listOf(PKG_XX_AUDIOBOOK, PKG_AUDIOBOOKSHELF))?.copy(label = "Audiobook"),
-            resolver.resolvePackage(PKG_YT_MUSIC)?.copy(label = "Music"),
+            fallback(resolver, listOf(PKG_XX_AUDIOBOOK, PKG_AUDIOBOOKSHELF)),
+            fallback(resolver, listOf(PKG_SKPP_RADIO, PKG_YT_MUSIC)),
         )
         val comms = listOfNotNull(
-            (resolver.resolvePackage(PKG_XX_DIALER) ?: resolver.resolveDialer()
-                ?: fallback(resolver, PKG_DIALER_FALLBACKS))?.copy(label = "Phone"),
-            (resolver.resolvePackage(PKG_TXXT) ?: resolver.resolveSmsApp()
-                ?: fallback(resolver, PKG_SMS_FALLBACKS))?.copy(label = "Text"),
-            fallback(resolver, listOf(PKG_XX_EMAIL, PKG_GMAIL))?.copy(label = "Email"),
-            fallback(resolver, listOf(PKG_MATTERMOST, PKG_SYNOLOGY_CHAT))?.copy(label = "Chat"),
-            resolver.resolvePackage(PKG_CLOUD_SOFTPHONE)?.copy(label = "SoftPhone"),
+            resolver.resolvePackage(PKG_XX_DIALER) ?: resolver.resolveDialer()
+                ?: fallback(resolver, PKG_DIALER_FALLBACKS),
+            resolver.resolvePackage(PKG_TXXT) ?: resolver.resolveSmsApp()
+                ?: fallback(resolver, PKG_SMS_FALLBACKS),
+            fallback(resolver, listOf(PKG_XX_EMAIL, PKG_GMAIL)),
+            fallback(resolver, listOf(PKG_MATTERMOST, PKG_SYNOLOGY_CHAT)),
+            resolver.resolvePackage(PKG_CLOUD_SOFTPHONE),
         )
-        val camera = (resolver.resolvePackage(PKG_XX_CAMERA) ?: resolver.resolveCameraApp()
-            ?: fallback(resolver, PKG_CAMERA_FALLBACKS))?.copy(label = "Camera")
+        val camera = resolver.resolvePackage(PKG_XX_CAMERA) ?: resolver.resolveCameraApp()
+            ?: fallback(resolver, PKG_CAMERA_FALLBACKS)
         val tools = listOfNotNull(
-            fallback(resolver, PKG_WATERFOX)?.copy(label = "Waterfox"),
-            (resolver.resolvePackage(PKG_XX_CALCULATOR) ?: resolver.resolveCalculator()
-                ?: fallback(resolver, PKG_CALCULATOR_FALLBACKS))?.copy(label = "Calculator"),
+            fallback(resolver, PKG_WATERFOX),
+            resolver.resolvePackage(PKG_XX_CALCULATOR) ?: resolver.resolveCalculator()
+                ?: fallback(resolver, PKG_CALCULATOR_FALLBACKS),
             camera,
-            fallback(resolver, listOf(PKG_XX_PHOTOS, PKG_SYNOLOGY_PHOTOS))?.copy(label = "Photos"),
+            fallback(resolver, listOf(PKG_XX_PHOTOS, PKG_SYNOLOGY_PHOTOS)),
         )
 
         val slots = buildList {
@@ -147,14 +149,10 @@ object DefaultLayoutSeeder {
             if (tools.isNotEmpty()) add(PlannedSlot("Tools", folderMembers = tools))
         }
 
-        // Every seeded name is a real rename, so the drawer, search, and
-        // folders all show the same label as the home screen.
-        val renames = (listOfNotNull(notes, calendar) + audio + comms + tools)
-            .associate { it.packageName to it.label }
-
+        // Apps keep their own names everywhere; nothing is renamed.
         return Plan(
             slots = slots,
-            renameLabels = renames,
+            renameLabels = emptyMap(),
             swipeLeft = resolver.resolveByLabel(LABEL_SKIPPY)?.copy(label = LABEL_SKIPPY),
             swipeRight = camera,
             hiddenPackages = DEFAULT_HIDDEN_PACKAGES,

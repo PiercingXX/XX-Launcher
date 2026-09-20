@@ -239,6 +239,28 @@ class SettingsActivity : AppCompatActivity() {
                 ?.setTextColor(ColorUtils.setAlphaComponent(colors.textColor, 180))
         }
 
+        /** Wipe slots, folders, and seeded renames, then run the first-run seeder again. */
+        private fun resetHomeLayout() {
+            val settings = app.settings
+            val folders = app.folders
+            lifecycleScope.launch {
+                folders.getFolders().forEach { folders.deleteFolder(it.id) }
+                (1..com.piercingxx.xxlauncher.data.SettingsRepository.MAX_SLOTS).forEach { settings.clearSlot(it) }
+                settings.slotCount = 0
+                settings.replaceRenameLabels(emptyMap())
+                settings.swipeLeftApp = null
+                settings.swipeRightApp = null
+                com.piercingxx.xxlauncher.data.DefaultLayoutSeeder.applyIfNeeded(requireContext(), settings, folders)
+                settings.firstRunSeeded = true
+                android.widget.Toast.makeText(requireContext(), R.string.toast_home_layout_reset, android.widget.Toast.LENGTH_SHORT).show()
+                startActivity(
+                    android.content.Intent(requireContext(), MainActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                requireActivity().finish()
+            }
+        }
+
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             // The repositories and the settings UI must share one prefs file.
             preferenceManager.sharedPreferencesName = com.piercingxx.xxlauncher.data.SettingsRepository.PREFS_NAME
@@ -267,6 +289,16 @@ class SettingsActivity : AppCompatActivity() {
             }
             findPreference<Preference>("import_backup")?.setOnPreferenceClickListener {
                 importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")); true
+            }
+            findPreference<Preference>("reset_home_layout")?.setOnPreferenceClickListener {
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.pref_reset_home_layout)
+                    .setMessage(R.string.reset_home_layout_confirm)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(android.R.string.ok) { _, _ -> resetHomeLayout() }
+                    .show()
+                    .applyLauncherTheme(app.themeManager, app.settings.fontFamily)
+                true
             }
             findPreference<Preference>("import_font")?.setOnPreferenceClickListener {
                 fontImportLauncher.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))

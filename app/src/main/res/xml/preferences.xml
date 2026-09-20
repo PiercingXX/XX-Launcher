@@ -208,6 +208,12 @@
             android:title="Import Backup"
             app:iconSpaceReserved="false" />
 
+        <Preference
+            android:key="reset_home_layout"
+            android:title="@string/pref_reset_home_layout"
+            android:summary="@string/pref_reset_home_layout_summary"
+            app:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 
     <!-- About -->
