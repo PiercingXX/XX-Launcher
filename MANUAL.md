@@ -443,19 +443,23 @@ label refresh re-checks before writing, so a rename, move, or clear landing
 mid-lookup cannot drop the slot's old occupant on top of its replacement.
 No Android imports, so it is unit-tested directly.
 
-#### `DefaultLayoutSeeder.kt` (~260 lines)
-Builds the out-of-the-box home screen on first launch:
+#### `DefaultLayoutSeeder.kt` (~200 lines)
+Builds the out-of-the-box home screen on first launch from the PiercingXX
+suite. App slots show the app's own name; only folders have a name of their
+own, and nothing is ever renamed.
 
 | Slot | Contents |
 |---|---|
-| Notes | Google Keep |
-| Audio *(folder)* | Audiobookshelf, YouTube Music |
-| Comms *(folder)* | Phone, Text, Gmail, Synology Chat, Cloud Softphone |
-| Calendar | Google Calendar |
-| Tools *(folder)* | Waterfox, Calculator, Camera, Synology Photos |
+| XX-Note | `com.piercingxx.xxnote` |
+| Audio *(folder)* | Audiobook, SKPP Radio |
+| Comms *(folder)* | XX-Dialer, TxxT, XX Email |
+| XX-Calendar | `com.piercingxx.calendar` |
+| Tools *(folder)* | XX-Calculator, XX Camera, xx-photos |
 
 Swipe-left is bound to "Skippy" **by label** because it installs as a PWA and
-its package name varies; swipe-right is bound to the resolved camera app. A
+its package name varies; swipe-right is bound to XX Camera. There are no
+third-party fallbacks: a suite app that is not installed is skipped, and
+Settings → "Reset home layout" re-seeds once the suite is on the phone. A
 list of preinstalled Google/OEM apps is hidden out of the box so they only
 appear via search.
 
@@ -711,7 +715,7 @@ app routes them there on first use (`ACTION_ACCESSIBILITY_SETTINGS`,
 | `AppInfoMatchTest` | Search matching: case-insensitivity, separator and diacritic stripping, blank query, renamed labels |
 | `AppKeyTest` | Two- and three-part keys, `managed` → serial rewrite, embedded swipe/widget user tokens |
 | `BackupDataTest` | Sparse v1 JSON does not NPE; mute list round-trips; restore payload is the file's keys only |
-| `DefaultLayoutSeederTest` | Seeding plan against a fake resolver: full install, nothing installed, package fallbacks, empty-folder skipping |
+| `DefaultLayoutSeederTest` | Seeding plan against a fake resolver: full suite, partial suite, third-party apps ignored, nothing installed |
 | `MoveInListTest` | `moveInList` swap semantics, end-of-list failure, immutability |
 | `RenamePropagatorTest` | Rename keys for apps, shortcuts and folders; blank-resets-to-real-label; the `holdsSameItem` guard against a stale async label write |
 | `ThemeBroadcasterTest` | Preset key → display name, the Custom fallback, the action/extra/permission constants against the family receivers, and one payload per family package |

@@ -1,39 +1,29 @@
 package com.piercingxx.xxlauncher.data
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.LauncherApps
 import android.os.Process
-import android.provider.MediaStore
-import android.provider.Telephony
 import com.piercingxx.xxlauncher.folder.FolderManager
 import com.piercingxx.xxlauncher.util.USER_PERSONAL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Seeds the out-of-the-box home screen on first launch. Every slot prefers
- * the PiercingXX suite app and falls back to the stock or third-party app
- * only when the suite one is not installed. Apps keep their own names; the
- * seeder never renames them.
+ * Seeds the out-of-the-box home screen on first launch with the PiercingXX
+ * suite. Apps keep their own names — the slot shows whatever the installed
+ * app calls itself; the seeder never renames.
  *
- *   notes             -> xx-note, else Google Keep
- *   Audio    (folder) -> xx-audiobook else Audiobookshelf,
- *                        SKPP Radio else YouTube Music
- *   Comms    (folder) -> xx-dialer else the default dialer,
- *                        Txxt else the default SMS app,
- *                        xx-email else Gmail,
- *                        Mattermost else Synology Chat,
- *                        Cloud Softphone
- *   calendar          -> xx-calendar, else Google Calendar
- *   Tools    (folder) -> Waterfox, xx-calculator else the system calculator,
- *                        xx-camera else the default camera,
- *                        xx-photos else Synology Photos
+ *   slot 1            -> XX-Note
+ *   Audio    (folder) -> Audiobook, SKPP Radio
+ *   Comms    (folder) -> XX-Dialer, TxxT, XX Email
+ *   slot 4            -> XX-Calendar
+ *   Tools    (folder) -> XX-Calculator, XX Camera, xx-photos
  *
  * Swipe left opens Skippy (matched by app label — it installs as a PWA so
- * its package name varies); swipe right opens the camera. Members that don't
- * resolve to an installed app are skipped; folders with no members are not
- * created. Never overwrites a configured home screen.
+ * its package name varies); swipe right opens XX Camera. Suite apps that are
+ * not installed are skipped; folders with no members are not created. There
+ * are no third-party fallbacks: "Reset home layout" re-seeds once the suite
+ * is installed. Never overwrites a configured home screen.
  */
 object DefaultLayoutSeeder {
 
@@ -43,37 +33,22 @@ object DefaultLayoutSeeder {
         val label: String,
     )
 
-    /** Injectable for tests; the real implementation talks to LauncherApps/PackageManager. */
+    /** Injectable for tests; the real implementation talks to LauncherApps. */
     interface AppResolver {
         fun resolvePackage(packageName: String): ResolvedApp?
         fun resolveByLabel(label: String): ResolvedApp?
-        fun resolveDialer(): ResolvedApp?
-        fun resolveSmsApp(): ResolvedApp?
-        fun resolveCameraApp(): ResolvedApp?
-        fun resolveCalculator(): ResolvedApp?
     }
 
-    // Suite apps come first everywhere they align with a default.
     private const val PKG_XX_NOTE = "com.piercingxx.xxnote"
     private const val PKG_XX_AUDIOBOOK = "com.piercingxx.audiobook"
     private const val PKG_SKPP_RADIO = "com.skpp.radio"
     private const val PKG_XX_DIALER = "com.piercingxx.xxdialer"
     private const val PKG_TXXT = "com.piercingxx.txxt"
     private const val PKG_XX_EMAIL = "dev.xxemail"
-    private const val PKG_MATTERMOST = "com.mattermost.rn"
     private const val PKG_XX_CALENDAR = "com.piercingxx.calendar"
     private const val PKG_XX_CALCULATOR = "com.piercingxx.xxcalculator"
     private const val PKG_XX_CAMERA = "com.piercingxx.camera"
     private const val PKG_XX_PHOTOS = "com.piercingxx.photos"
-
-    private const val PKG_KEEP = "com.google.android.keep"
-    private const val PKG_AUDIOBOOKSHELF = "com.audiobookshelf.app"
-    private const val PKG_YT_MUSIC = "com.google.android.apps.youtube.music"
-    private const val PKG_GMAIL = "com.google.android.gm"
-    private const val PKG_SYNOLOGY_CHAT = "com.synology.dschat"
-    private const val PKG_CLOUD_SOFTPHONE = "cz.acrobits.softphone.cloudphone"
-    private const val PKG_CALENDAR = "com.google.android.calendar"
-    private const val PKG_SYNOLOGY_PHOTOS = "com.synology.projectkailash"
     private const val LABEL_SKIPPY = "Skippy"
 
     /** Hidden out of the box; they only ever show up via search. */
@@ -92,11 +67,6 @@ object DefaultLayoutSeeder {
         "com.google.android.googlequicksearchbox",
         "com.google.android.apps.tips",
     )
-    private val PKG_WATERFOX = listOf("net.waterfox.android.release", "net.waterfox.android")
-    private val PKG_DIALER_FALLBACKS = listOf("com.google.android.dialer", "com.android.dialer")
-    private val PKG_SMS_FALLBACKS = listOf("com.google.android.apps.messaging", "com.android.messaging")
-    private val PKG_CAMERA_FALLBACKS = listOf("com.google.android.GoogleCamera", "com.android.camera2", "com.android.camera")
-    private val PKG_CALCULATOR_FALLBACKS = listOf("com.google.android.calculator", "com.android.calculator2")
 
     /** One planned home slot: an app, or a named folder of apps. */
     data class PlannedSlot(
@@ -115,32 +85,26 @@ object DefaultLayoutSeeder {
     )
 
     fun plan(resolver: AppResolver): Plan {
-        val notes = fallback(resolver, listOf(PKG_XX_NOTE, PKG_KEEP))
-        val calendar = fallback(resolver, listOf(PKG_XX_CALENDAR, PKG_CALENDAR))
+        val notes = resolver.resolvePackage(PKG_XX_NOTE)
+        val calendar = resolver.resolvePackage(PKG_XX_CALENDAR)
+        val camera = resolver.resolvePackage(PKG_XX_CAMERA)
 
         val audio = listOfNotNull(
-            fallback(resolver, listOf(PKG_XX_AUDIOBOOK, PKG_AUDIOBOOKSHELF)),
-            fallback(resolver, listOf(PKG_SKPP_RADIO, PKG_YT_MUSIC)),
+            resolver.resolvePackage(PKG_XX_AUDIOBOOK),
+            resolver.resolvePackage(PKG_SKPP_RADIO),
         )
         val comms = listOfNotNull(
-            resolver.resolvePackage(PKG_XX_DIALER) ?: resolver.resolveDialer()
-                ?: fallback(resolver, PKG_DIALER_FALLBACKS),
-            resolver.resolvePackage(PKG_TXXT) ?: resolver.resolveSmsApp()
-                ?: fallback(resolver, PKG_SMS_FALLBACKS),
-            fallback(resolver, listOf(PKG_XX_EMAIL, PKG_GMAIL)),
-            fallback(resolver, listOf(PKG_MATTERMOST, PKG_SYNOLOGY_CHAT)),
-            resolver.resolvePackage(PKG_CLOUD_SOFTPHONE),
+            resolver.resolvePackage(PKG_XX_DIALER),
+            resolver.resolvePackage(PKG_TXXT),
+            resolver.resolvePackage(PKG_XX_EMAIL),
         )
-        val camera = resolver.resolvePackage(PKG_XX_CAMERA) ?: resolver.resolveCameraApp()
-            ?: fallback(resolver, PKG_CAMERA_FALLBACKS)
         val tools = listOfNotNull(
-            fallback(resolver, PKG_WATERFOX),
-            resolver.resolvePackage(PKG_XX_CALCULATOR) ?: resolver.resolveCalculator()
-                ?: fallback(resolver, PKG_CALCULATOR_FALLBACKS),
+            resolver.resolvePackage(PKG_XX_CALCULATOR),
             camera,
-            fallback(resolver, listOf(PKG_XX_PHOTOS, PKG_SYNOLOGY_PHOTOS)),
+            resolver.resolvePackage(PKG_XX_PHOTOS),
         )
 
+        // App slots carry the app's own label; only folders have a name of their own.
         val slots = buildList {
             notes?.let { add(PlannedSlot(it.label, app = it)) }
             if (audio.isNotEmpty()) add(PlannedSlot("Audio", folderMembers = audio))
@@ -149,7 +113,6 @@ object DefaultLayoutSeeder {
             if (tools.isNotEmpty()) add(PlannedSlot("Tools", folderMembers = tools))
         }
 
-        // Apps keep their own names everywhere; nothing is renamed.
         return Plan(
             slots = slots,
             renameLabels = emptyMap(),
@@ -158,9 +121,6 @@ object DefaultLayoutSeeder {
             hiddenPackages = DEFAULT_HIDDEN_PACKAGES,
         )
     }
-
-    private fun fallback(resolver: AppResolver, packages: List<String>): ResolvedApp? =
-        packages.firstNotNullOfOrNull(resolver::resolvePackage)
 
     /** Applies the default layout; returns true if the home screen changed. */
     suspend fun applyIfNeeded(
@@ -241,30 +201,6 @@ object DefaultLayoutSeeder {
             launcherApps.getActivityList(null, myUser)
                 .firstOrNull { it.label.toString().equals(label, ignoreCase = true) }
                 ?.toResolvedApp()
-        }.getOrNull()
-
-        override fun resolveDialer(): ResolvedApp? = resolveIntent(Intent(Intent.ACTION_DIAL))
-
-        override fun resolveSmsApp(): ResolvedApp? =
-            runCatching { Telephony.Sms.getDefaultSmsPackage(context) }.getOrNull()
-                ?.let(::resolvePackage)
-                ?: resolveCategory(Intent.CATEGORY_APP_MESSAGING)
-
-        override fun resolveCameraApp(): ResolvedApp? =
-            resolveIntent(Intent(MediaStore.ACTION_IMAGE_CAPTURE))
-
-        override fun resolveCalculator(): ResolvedApp? =
-            resolveCategory(Intent.CATEGORY_APP_CALCULATOR)
-
-        private fun resolveCategory(category: String): ResolvedApp? =
-            resolveIntent(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, category))
-
-        private fun resolveIntent(intent: Intent): ResolvedApp? = runCatching {
-            val resolved = context.packageManager.resolveActivity(intent, 0)
-                ?.activityInfo?.packageName ?: return null
-            // "android" is the chooser stub, not a real app.
-            if (resolved == "android") return null
-            resolvePackage(resolved)
         }.getOrNull()
 
         private fun android.content.pm.LauncherActivityInfo.toResolvedApp() = ResolvedApp(
