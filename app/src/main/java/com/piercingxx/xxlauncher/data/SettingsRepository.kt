@@ -213,6 +213,25 @@ class SettingsRepository(context: Context) {
 
     fun clearSlot(slot: Int) = setSlot(slot, SlotEntry())
 
+    /** Swaps two slots' contents; either index outside 1..MAX_SLOTS is a no-op. */
+    fun swapSlots(a: Int, b: Int) {
+        if (a !in 1..MAX_SLOTS || b !in 1..MAX_SLOTS || a == b) return
+        val first = getSlot(a)
+        setSlot(a, getSlot(b))
+        setSlot(b, first)
+    }
+
+    /**
+     * Rewrites the visible slots 1..n from [entries] in order. The count is
+     * left alone: reordering never adds or drops a row.
+     */
+    fun replaceVisibleSlots(entries: List<SlotEntry>) {
+        val count = slotCount.coerceIn(0, MAX_SLOTS)
+        for (i in 1..count) {
+            setSlot(i, entries.getOrElse(i - 1) { SlotEntry() })
+        }
+    }
+
     /**
      * Deletes a visible home slot and shifts later slots up, shrinking
      * [slotCount]. "Clear slot" uses this so the row disappears instead of

@@ -1,26 +1,25 @@
 package com.piercingxx.xxlauncher
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
+import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.data.AppInfo
+import com.piercingxx.xxlauncher.data.Folder
+import com.piercingxx.xxlauncher.menu.ActionSheet
 import com.piercingxx.xxlauncher.theme.applyLauncherFont
-import com.piercingxx.xxlauncher.theme.applyLauncherTheme
 import com.piercingxx.xxlauncher.util.showToast
 import kotlinx.coroutines.launch
 
 /**
- * Picks an app (or folder, or "clear") for a home slot or gesture target.
- * Returns the selection in the activity result extras.
+ * Picks an app (or folder, or "clear") for a home slot, a swipe gesture or a
+ * widget tap. It only picks: slot actions (rename, move, clear) live in the
+ * slot's long-press sheet. Returns the selection in the activity result extras.
  */
 class AppPickerActivity : AppCompatActivity() {
 
@@ -35,38 +34,44 @@ class AppPickerActivity : AppCompatActivity() {
         val allowClear = intent.getBooleanExtra(EXTRA_ALLOW_CLEAR, false)
 
         val colors = app.themeManager.getCurrentColors()
-        findViewById<android.view.View>(android.R.id.content).setBackgroundColor(colors.backgroundColor)
+        val fontKey = app.settings.fontFamily
+        val scale = app.settings.textSizeScale
+        val textGravity = ActionSheet.gravityFor(app.settings.textAlignment)
+        findViewById<View>(android.R.id.content).setBackgroundColor(colors.backgroundColor)
+        findViewById<TextView>(R.id.pickerTitle).apply {
+            setTextColor(colors.textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f * scale)
+            gravity = textGravity
+            applyLauncherFont(fontKey)
+        }
 
         fun addRow(label: String, onTap: () -> Unit) {
             container.addView(TextView(this).apply {
                 text = label
                 setTextColor(colors.textColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                setPadding(dp(16), dp(10), dp(16), dp(10))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
+                gravity = textGravity or Gravity.CENTER_VERTICAL
+                minHeight = dp(52)
+                setPadding(dp(24), dp(12), dp(24), dp(12))
                 isClickable = true
+                foreground = ActionSheet.rippleFor(colors.textColor)
                 setOnClickListener { onTap() }
-                applyLauncherFont(app.settings.fontFamily)
+                applyLauncherFont(fontKey)
             })
         }
 
-        fun addMoveRow(up: Boolean) {
-            addRow(getString(if (up) R.string.action_move_up else R.string.action_move_down)) {
-                setResult(RESULT_OK, Intent()
-                    .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                    .putExtra(EXTRA_MOVE_UP, up))
-                finish()
-            }
+        // Sections read as groups, the same hairline the sheets use.
+        fun addDivider() {
+            container.addView(
+                View(this).apply { setBackgroundColor(ActionSheet.hairlineFor(colors.textColor)) },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1).coerceAtLeast(1)).apply {
+                    marginStart = dp(24); marginEnd = dp(24); topMargin = dp(6); bottomMargin = dp(6)
+                },
+            )
         }
 
-        fun showNewFolderDialog() {
-            val input = EditText(this).apply {
-                imeOptions = EditorInfo.IME_ACTION_DONE
-                isSingleLine = true
-                applyLauncherFont(app.settings.fontFamily)
-            }
-
-            fun save() {
-                val name = input.text.toString().trim()
+        fun showNewFolderSheet() {
+            fun save(name: String) {
                 lifecycleScope.launch {
                     app.folders.createFolder(name).fold(
                         onSuccess = { folder ->
@@ -79,114 +84,78 @@ class AppPickerActivity : AppCompatActivity() {
                             )
                             finish()
                         },
-                        onFailure = {
-                            showToast(getString(R.string.toast_invalid_folder_name))
-                        },
+                        onFailure = { showToast(getString(R.string.toast_invalid_folder_name)) },
                     )
                 }
             }
-
-            val dialog = AlertDialog.Builder(this)
-                .setTitle(R.string.picker_new_folder)
-                .setView(input)
-                .setPositiveButton(R.string.action_done) { _, _ -> save() }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
-
-            input.setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    save()
-                    dialog.dismiss()
-                    true
-                } else {
-                    false
-                }
+            val sheet = ActionSheet(this, app.themeManager, app.settings)
+                .title(getString(R.string.sheet_title_new_folder))
+            val input = sheet.input("", getString(R.string.folder_name_hint), ::save)
+            sheet.button(getString(android.R.string.cancel)) { sheet.dismiss() }
+            sheet.button(getString(R.string.action_save), primary = true) {
+                sheet.dismiss()
+                save(input.text.toString().trim())
             }
-
-            dialog.show()
-            dialog.applyLauncherTheme(app.themeManager, app.settings.fontFamily)
-            input.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            sheet.show()
         }
 
-        fun render(apps: List<AppInfo>, folders: List<com.piercingxx.xxlauncher.data.Folder>) {
+        fun render(apps: List<AppInfo>, folders: List<Folder>) {
             container.removeAllViews()
-            if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_UP, false)) addMoveRow(up = true)
-            if (intent.getBooleanExtra(EXTRA_ALLOW_MOVE_DOWN, false)) addMoveRow(up = false)
-            if (intent.getBooleanExtra(EXTRA_ALLOW_REARRANGE, false)) {
-                addRow(getString(R.string.picker_rearrange)) {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_REARRANGE, true))
-                    finish()
-                }
+            var sections = 0
+            fun section(block: () -> Unit) {
+                if (sections++ > 0) addDivider()
+                block()
             }
-            // Renaming the slot's app is handled back in the caller, where the
-            // rename dialog and propagation live.
-            if (intent.getBooleanExtra(EXTRA_ALLOW_RENAME, false)) {
-                addRow(getString(R.string.action_change_label)) {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_RENAME, true))
-                    finish()
-                }
-            }
-            if (intent.getIntExtra(EXTRA_FOLDER_OPTIONS_ID, -1) >= 0) {
-                addRow(getString(R.string.picker_folder_options)) {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_FOLDER_OPTIONS, true))
-                    finish()
-                }
-            }
+
             if (allowClear) {
-                val clearLabel = intent.getStringExtra(EXTRA_CLEAR_LABEL)
-                    ?: getString(R.string.picker_clear_slot)
-                addRow(clearLabel) {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_CLEARED, true))
-                    finish()
-                }
-            }
-            folders.forEach { folder ->
-                addRow("▸ ${folder.name}") {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_FOLDER_ID, folder.id)
-                        .putExtra(EXTRA_LABEL, folder.name))
-                    finish()
+                section {
+                    val clearLabel = intent.getStringExtra(EXTRA_CLEAR_LABEL)
+                        ?: getString(R.string.picker_clear_slot)
+                    addRow(clearLabel) {
+                        setResult(RESULT_OK, Intent()
+                            .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                            .putExtra(EXTRA_CLEARED, true))
+                        finish()
+                    }
                 }
             }
             if (allowFolders) {
-                addRow(getString(R.string.picker_new_folder)) {
-                    showNewFolderDialog()
+                section {
+                    folders.forEach { folder ->
+                        addRow("▸ ${folder.name}") {
+                            setResult(RESULT_OK, Intent()
+                                .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                                .putExtra(EXTRA_FOLDER_ID, folder.id)
+                                .putExtra(EXTRA_LABEL, folder.name))
+                            finish()
+                        }
+                    }
+                    addRow(getString(R.string.picker_new_folder)) { showNewFolderSheet() }
                 }
             }
-            apps.forEach { appInfo ->
-                val suffix = buildString {
-                    if (appInfo.isShortcut) append("  ↗")
-                    if (appInfo.isWorkProfile) append("  ⧉")
-                }
-                addRow(appInfo.label + suffix) {
-                    setResult(RESULT_OK, Intent()
-                        .putExtra(EXTRA_SLOT_INDEX, slotIndex)
-                        .putExtra(EXTRA_PACKAGE, appInfo.packageName)
-                        .putExtra(EXTRA_ACTIVITY, appInfo.activityClassName)
-                        .putExtra(EXTRA_USER, appInfo.userToken)
-                        .putExtra(EXTRA_SHORTCUT_ID, appInfo.shortcutId)
-                        .putExtra(EXTRA_LABEL, appInfo.label))
-                    finish()
+            section {
+                apps.forEach { appInfo ->
+                    val suffix = buildString {
+                        if (appInfo.isShortcut) append("  ↗")
+                        if (appInfo.isWorkProfile) append("  ⧉")
+                    }
+                    addRow(appInfo.label + suffix) {
+                        setResult(RESULT_OK, Intent()
+                            .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+                            .putExtra(EXTRA_PACKAGE, appInfo.packageName)
+                            .putExtra(EXTRA_ACTIVITY, appInfo.activityClassName)
+                            .putExtra(EXTRA_USER, appInfo.userToken)
+                            .putExtra(EXTRA_SHORTCUT_ID, appInfo.shortcutId)
+                            .putExtra(EXTRA_LABEL, appInfo.label))
+                        finish()
+                    }
                 }
             }
         }
 
         app.appRepo.apps.observe(this) { apps ->
             if (allowFolders) {
-                lifecycleScope.launch {
-                    render(apps, app.folders.getFolders())
-                }
+                lifecycleScope.launch { render(apps, app.folders.getFolders()) }
             } else {
                 render(apps, emptyList())
             }
@@ -207,14 +176,5 @@ class AppPickerActivity : AppCompatActivity() {
         const val EXTRA_CLEAR_LABEL = "clear_label"
         const val EXTRA_ALLOW_FOLDERS = "allow_folders"
         const val EXTRA_ALLOW_CLEAR = "allow_clear"
-        const val EXTRA_ALLOW_MOVE_UP = "allow_move_up"
-        const val EXTRA_ALLOW_MOVE_DOWN = "allow_move_down"
-        const val EXTRA_MOVE_UP = "move_up"
-        const val EXTRA_ALLOW_REARRANGE = "allow_rearrange"
-        const val EXTRA_REARRANGE = "rearrange"
-        const val EXTRA_ALLOW_RENAME = "allow_rename"
-        const val EXTRA_RENAME = "rename"
-        const val EXTRA_FOLDER_OPTIONS_ID = "folder_options_id"
-        const val EXTRA_FOLDER_OPTIONS = "folder_options"
     }
 }

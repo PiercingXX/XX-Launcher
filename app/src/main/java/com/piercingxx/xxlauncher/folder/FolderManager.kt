@@ -189,6 +189,13 @@ class FolderManager(
             Result.success(Unit)
         }
 
+    /** Writes a complete manual order (drag-to-reorder drops the whole list at once). */
+    suspend fun setMemberOrder(folderId: Int, orderedKeys: List<String>): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            persistMemberOrder(folderId, orderedKeys)
+            Result.success(Unit)
+        }
+
     private suspend fun persistMemberOrder(folderId: Int, orderedKeys: List<String>) {
         val rows = folderDao.getFolderMembers(folderId).associateBy { it.appId }
         val updates = orderedKeys.mapIndexedNotNull { index, key ->

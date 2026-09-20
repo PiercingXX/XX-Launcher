@@ -75,6 +75,19 @@
         <item name="homeTextColor">@color/default_home_text</item>
     </style>
 
+    <!-- Bottom sheet overlay for ActionSheet. Material's own sheet surface is
+         tinted away so the launcher-drawn ground (theme color, top corners,
+         hairline) is the only surface on screen. -->
+    <style name="Theme.Launcher.Sheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Launcher.BottomSheet</item>
+        <item name="android:windowIsFloating">false</item>
+    </style>
+
+    <style name="Widget.Launcher.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="android:background">@android:color/transparent</item>
+    </style>
+
     <!-- Text styles -->
     <style name="TextAppearance.Launcher.SearchResult" parent="TextAppearance.Material3.BodyMedium">
         <item name="android:textColor">?attr/homeTextColor</item>

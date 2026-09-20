@@ -18,6 +18,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.Display
 import android.view.View
+import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.inputmethod.InputMethodManager
@@ -280,16 +281,19 @@ fun Context.isGestureNavigation(): Boolean =
 // alone — hiding it turns the system's swipe-up (home/recents) into a
 // reveal-bars swipe, so the bottom edge keeps belonging to Android while
 // swipes elsewhere on the home screen open the app drawer.
-fun Activity.hideNavigationBar() {
-    if (isGestureNavigation()) return
+fun Activity.hideNavigationBar() = window.hideNavigationBar(this)
+
+/** Same rule for any window — a dialog or sheet mirroring its host activity. */
+fun Window.hideNavigationBar(context: Context) {
+    if (context.isGestureNavigation()) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        window.insetsController?.apply {
+        insetsController?.apply {
             systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsets.Type.navigationBars())
         }
     } else {
         @Suppress("DEPRECATION")
-        window.decorView.apply {
+        decorView.apply {
             systemUiVisibility = systemUiVisibility or
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or

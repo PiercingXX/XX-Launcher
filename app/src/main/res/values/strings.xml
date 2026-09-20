@@ -35,14 +35,32 @@
     <string name="action_rearrange">Rearrange Apps</string>
     <string name="action_sort_alphabetically">Sort A–Z</string>
     <string name="action_done">Done</string>
+    <string name="action_save">Save</string>
+    <string name="action_change_app">Change App…</string>
+    <string name="action_choose_app">Choose App…</string>
+    <string name="action_clear_slot">Clear Slot</string>
+    <string name="action_rename_folder">Rename Folder</string>
+    <string name="action_delete_folder">Delete Folder</string>
+
+    <!-- Sheets -->
+    <string name="sheet_subtitle_home_slot">Home slot %d</string>
+    <string name="sheet_subtitle_folder">Folder</string>
+    <string name="sheet_subtitle_folder_slot">Folder · Home slot %d</string>
+    <string name="sheet_subtitle_shortcut">Shortcut</string>
+    <string name="sheet_subtitle_hidden">Hidden</string>
+    <string name="sheet_subtitle_muted_until">Muted until %s</string>
+    <string name="sheet_title_empty_slot">Empty Slot</string>
+    <string name="sheet_title_new_folder">New Folder</string>
+    <string name="rename_hint_blank_resets">Blank restores the original name</string>
+    <string name="folder_name_hint">Folder name</string>
+    <string name="reorder_hint">Drag a row to reorder</string>
+    <string name="confirm_delete_folder_message">Its apps stay installed and return to the drawer.</string>
     
     <!-- Weather -->
     <string name="weather_loading">Loading…</string>
     
     <!-- Folders -->
     <string name="rearrange_title">Rearrange %s</string>
-    <string name="rearrange_up">▲</string>
-    <string name="rearrange_down">▼</string>
     
     <!-- Search -->
     <string name="search_hint">Search apps…</string>
@@ -81,7 +99,10 @@
     <string name="permission_theme_sync_label">XX theme sync</string>
     <string name="permission_theme_sync_description">Lets XX family apps receive the launcher\'s theme</string>
     <string name="notification_access_needed">Grant notification access to mute apps</string>
-    <string name="disable_for_hours">%d hours</string>
+    <plurals name="disable_for_hours">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
     <string name="action_remove_from_folder">Remove from Folder</string>
     <string name="confirm_delete_folder">Delete folder \"%s\"?</string>
     <string name="picker_title">Select App</string>
@@ -98,12 +119,10 @@
     <string name="widget_tap_default">Default action</string>
     <string name="action_delete_shortcut">Delete Shortcut</string>
     <string name="picker_new_folder">New Folder…</string>
-    <string name="picker_rearrange">Rearrange…</string>
-    <string name="picker_folder_options">Folder Options…</string>
     <string name="rearrange_home_title">Rearrange Home Screen</string>
     <string name="rearrange_pinned_title">Rearrange Pinned Apps</string>
     <string name="pref_gestures">Gestures</string>
-    <string name="gestures_help_text">Swipe up — open the app drawer\nSwipe down — notifications or web search\nSwipe left / right — launch the configured apps\nDouble-tap — lock the screen\nLong-press the background — open settings\nTap a slot — launch the app or open its folder\nTap an empty slot — choose an app\nLong-press a slot — app picker with move, rearrange, and clear\nLong-press any app row — actions: add to home, hide, rename, folders, uninstall\nIn search, start with ! for a web search</string>
+    <string name="gestures_help_text">Swipe up — open the app drawer\nSwipe down — notifications or web search\nSwipe left / right — launch the configured apps\nDouble-tap — lock the screen\nLong-press the background — open settings\nTap a slot — launch the app or open its folder\nTap an empty slot — choose an app\nLong-press a slot — change the app, label, or order, or clear it\nLong-press any app row — actions: add to home, hide, rename, folders, uninstall\nIn search, start with ! for a web search</string>
     <string name="pin_confirm_message">Add \"%s\" to the app drawer?</string>
     <string name="pin_confirm_add">Add</string>
     <string name="pin_request_invalid">Invalid pin request</string>
@@ -125,5 +144,6 @@
     <string name="accessibility_new_app">New</string>
     <string name="accessibility_move_up">Move %s up</string>
     <string name="accessibility_move_down">Move %s down</string>
+    <string name="accessibility_drag_handle">Drag handle for %s</string>
     
 </resources>

@@ -48,8 +48,8 @@ Interaction is gesture-driven:
 | Double-tap | Lock the screen (needs the accessibility service) |
 | Long-press home background | Open launcher settings |
 | Tap a slot | Launch the app, drop the folder open inline, or (empty slot) open the app picker |
-| Long-press a slot | Open the app picker for that slot (plus Change Label, move, rearrange, folder options, new folder, and clear rows) |
-| Long-press a drawer row | Item action menu (add to home, hide, pin, rename, folder, uninstall…) |
+| Long-press a slot | Slot sheet: Change App… (picker), Change Label / Rename Folder, move, Rearrange Home Screen, App Info, Clear Slot, Delete Folder |
+| Long-press a drawer row | Item action sheet (add to home, pin, folder, label, hide, mute, app info, uninstall) |
 
 Settings → Gestures → "Gestures" shows this table in-app.
 
@@ -339,6 +339,10 @@ The home screen and the HOME intent target.
   collapse a folder instead of playing the system's predictive-back animation.
   This requires **both** the callback and `android:enableOnBackInvokedCallback="true"`
   in the manifest.
+- **Slot long-press** — `onSlotLongPressed()` hands off to
+  `ItemActionMenu.showSlotMenu()`; the activity only supplies
+  `openPickerForSlot()` and a re-render. The picker result handler therefore
+  only knows two shapes: a folder id, or an app/shortcut.
 - **First run** — `seedFirstRunIfNeeded()` sets the flag *before* seeding, so a
   failed seed is not retried.
 - **Default-launcher prompt** — uses `RoleManager.ROLE_HOME` on API 29+,
@@ -369,19 +373,18 @@ A translucent bottom sheet with a bottom-anchored search field.
 - `sortApps()` implements the five sort modes; only `default` preserves the
   user's manual pinned order.
 
-#### `AppPickerActivity.kt` (~220 lines)
-A themed dialog-style list used for three jobs: choosing a home-slot target
-(apps + folders + "clear"), choosing a swipe-gesture target, and choosing a
-widget tap action. The caller distinguishes them via the `EXTRA_ALLOW_FOLDERS`
-/ `EXTRA_ALLOW_CLEAR` / `EXTRA_CLEAR_LABEL` extras and reads the selection back
-out of the result intent.
+#### `AppPickerActivity.kt` (~170 lines)
+A themed list used for three jobs: choosing a home-slot target (folders + "New
+Folder…" + apps), choosing a swipe-gesture target, and choosing a widget tap
+action (both with a "clear" row). The caller distinguishes them via the
+`EXTRA_ALLOW_FOLDERS` / `EXTRA_ALLOW_CLEAR` / `EXTRA_CLEAR_LABEL` extras and
+reads the selection back out of the result intent.
 
-It also carries the home-slot long-press rows, each gated by its own
-`EXTRA_ALLOW_*` flag and each answered by an `EXTRA_*` in the result rather
-than acted on here: move up/down, Rearrange, **Change Label**, folder options,
-and clear. The rename row is deliberately a result, not an action — the rename
-dialog and its propagation live back in `MainActivity` /
-`ItemActionMenu.showRenameForSlot()`, where the app list is.
+It only picks. Every other slot action (rename, move, rearrange, clear, folder
+options) lives in the slot's long-press sheet, `ItemActionMenu.showSlotMenu()`,
+which opens the picker behind its "Change App…" row. Rows follow the text
+alignment, size scale and font settings, and sections are split by the same
+hairline the sheets use. "New Folder…" prompts with an `ActionSheet` input.
 
 #### `SettingsActivity.kt` (~430 lines)
 Hosts `SettingsFragment : PreferenceFragmentCompat` over `R.xml.preferences`.
@@ -474,14 +477,53 @@ and clears any slot pointing at it.
 
 ### `com.piercingxx.xxlauncher.menu`
 
-#### `ItemActionMenu.kt` (~630 lines)
-Every long-press action sheet. Menu contents are assembled conditionally: app
-info, change label, "Add to Home Screen" (first empty visible slot, growing
-the slot row up to the maximum of 8 when full), hide/show, and "Disable
-for…" always; pin/unpin, move up/down, and "Add to Folder" only for drawer
-rows; folder-member reordering,
-"Rearrange Apps", and "Remove from Folder" only inside a folder; delete
-shortcut or uninstall last.
+#### `ActionSheet.kt` (~330 lines)
+The launcher's one sheet. Every long-press menu, chooser, confirmation and
+text prompt is a `BottomSheetDialog` (theme overlay `Theme.Launcher.Sheet`)
+whose Material surface is tinted away and replaced by a launcher-drawn ground:
+the theme background blended 7 % toward the text colour (so it reads as a
+layer on an identical black home), 28 dp top corners, a hairline stroke, and a
+drag handle as the only chrome. Rows are grouped; a hairline separates groups.
+Text follows the alignment, size scale and font settings.
+
+Fluent API: `title()`, `subtitle()`, `group(rows)` (empty groups are skipped
+so callers build conditionally), `view(v, scrolls)` for a custom block,
+`input()` for a single-line field that submits on keyboard Done, `button()`
+for trailing text buttons (primary is bold), `onDismiss()`, then `show()`.
+Disabled rows dim to 35 % instead of vanishing. The body is capped at 62 % of
+the screen height by a `MaxHeightFrame` and scrolls past it; a `scrolls`
+block (a RecyclerView) is left unwrapped so nested scrolling reaches it.
+
+Because a dialog is its own window, the host's hidden navigation bar would
+pop back for as long as the sheet is open; `show()` reads the host's root
+insets and hides the bar on the sheet window the same way
+(`Window.hideNavigationBar()`), leaving gesture navigation alone.
+
+#### `ReorderSheet.kt` (~200 lines)
+Drag-to-reorder list inside an `ActionSheet`: RecyclerView + `ItemTouchHelper`.
+Long-press anywhere on a row, or touch its grip (a drawn two-bar
+`DragHandleDrawable`, so it never depends on the font), lifts it with a
+haptic tick; each drop calls `onOrderChanged` with the whole id order so the
+caller persists in one write. `Handle.replace()` lets an async action (folder
+"Sort A–Z") swap the list while the sheet stays open. `List.movedItem()` in
+`data/ListOps.kt` is the pure move and is unit-tested. One sheet serves home
+slots, pinned drawer rows and folder members.
+
+#### `ItemActionMenu.kt` (~460 lines)
+Every long-press menu, built on `ActionSheet`. App rows are three groups:
+placement ("Add to Home Screen", pin/unpin with move and "Rearrange Pinned
+Apps" when pinned, "Add to Folder" for drawer rows; move, "Rearrange Apps",
+"Remove from Folder" inside a folder), the app's own facts ("Change Label",
+hide/show, "Disable for…"), and system ("App Info", then delete shortcut or
+uninstall last). Move rows are disabled at the ends rather than toasting, so
+folder-member and folder menus load their position first. The subtitle only
+carries distinguishing facts (shortcut, work profile, hidden, muted until).
+
+`showSlotMenu()` is the home-slot long-press: "Change App…" opens the picker;
+otherwise Change Label (or Rename Folder + Rearrange Apps for a folder slot),
+Move Up/Down, "Rearrange Home Screen", App Info, Clear Slot, Delete Folder.
+`showFolderMenu()` covers drawer folder rows. Add-to-folder, disable-for,
+delete-folder confirmation and the rename prompt are all sheets too.
 
 `showRenameForSlot()` is the home-slot half of "Change Label": it resolves a
 `SlotEntry` back to its drawer row through `RenamePropagator.renameKey()` so
@@ -489,11 +531,10 @@ the rename runs through `AppRepository.rename()` and lands everywhere. If the
 app list has not loaded yet it writes the rename label straight to prefs and
 refreshes — the home screen's own label pass picks it up on the next render.
 
-`showRearrangeDialog()` is the most involved: it rebuilds its rows in place
-after every move so the sheet stays open for a run of adjustments, dims rather
-than hides the end-of-list arrows so row widths stay stable, and only the
-"Done" button dismisses (the neutral "Sort A–Z" button is re-wired after
-`show()` so it does not auto-close).
+The three rearrange flows (home slots, pinned, folder members) are one
+`ReorderSheet` each: home slots persist through
+`SettingsRepository.replaceVisibleSlots()`, pinned through `pinnedApps`,
+folder members through `FolderManager.setMemberOrder()`.
 
 ### `com.piercingxx.xxlauncher.theme`
 
@@ -538,6 +579,8 @@ verifies the file actually parses as a typeface, and only then promotes it into
 `filesDir`.
 
 #### `DialogTheming.kt` (64 lines)
+For the remaining `AlertDialog`s (default-launcher prompt, pin confirmation,
+settings dialogs); the long-press menus use `ActionSheet` instead.
 `AlertDialog.applyLauncherTheme()` — must be called **after** `show()` because
 the button bar does not exist before then. Paints a rounded background with a
 hairline stroke (so the sheet is visible even when it matches the screen
@@ -608,7 +651,7 @@ Android's; swipes elsewhere belong to the launcher.
 | `layout/activity_app_drawer.xml` | 15 % transparent spacer + sheet, `fillViewport` scroll with bottom gravity, search pinned at the bottom |
 | `layout/activity_app_picker.xml` | Title + scrolling row container |
 | `layout/preference_theme_strip.xml` | Title + horizontally scrolling swatch strip |
-| `values/themes.xml` | `Theme.Launcher` and its Home / Drawer / Dialog / Settings variants |
+| `values/themes.xml` | `Theme.Launcher` and its Home / Drawer / Dialog / Settings variants, plus the `Theme.Launcher.Sheet` bottom-sheet overlay |
 | `values/attrs.xml` | `homeBackgroundColor`, `homeTextColor` theme attributes |
 | `values/colors.xml` | Icon background and the pre-theme default home colours |
 | `values/ids.xml` | `tag_folder_id`, used as a view tag key |
@@ -688,7 +731,7 @@ SDK's `org.json` stub throws on every call.
 `FolderOrderTest` needs at least three launchable apps on the device and
 cleans up a leftover test folder from an interrupted run before starting.
 
-**Not covered by tests:** `ItemActionMenu`'s dialogs, `WidgetContainer`,
+**Not covered by tests:** `ItemActionMenu`'s sheets, `WidgetContainer`,
 theming, font import, and `ThemeBroadcaster.sendBroadcast` itself (only the
 pure fan-out and the permission constant are locked).
 

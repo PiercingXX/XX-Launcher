@@ -4,15 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.text.format.DateFormat
-import android.util.TypedValue
-import android.view.Gravity
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import androidx.annotation.StringRes
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.piercingxx.xxlauncher.R
@@ -24,8 +16,6 @@ import com.piercingxx.xxlauncher.data.SlotEntry
 import com.piercingxx.xxlauncher.folder.FolderManager
 import com.piercingxx.xxlauncher.notification.AppMuteListenerService
 import com.piercingxx.xxlauncher.theme.ThemeManager
-import com.piercingxx.xxlauncher.theme.applyLauncherFont
-import com.piercingxx.xxlauncher.theme.applyLauncherTheme
 import com.piercingxx.xxlauncher.util.openAppInfo
 import com.piercingxx.xxlauncher.util.requestUninstall
 import com.piercingxx.xxlauncher.util.showToast
@@ -36,9 +26,11 @@ import kotlinx.coroutines.launch
 import java.util.Date
 
 /**
- * Long-press action menu for app rows (drawer, folder members) and folders.
- * All state changes persist via the shared repositories; [onChanged] lets the
- * caller re-render.
+ * Long-press menus for app rows (drawer, folder members), folders and home
+ * slots, all as [ActionSheet]s. Rows are grouped: placement first, then the
+ * app's own label / visibility / mute, then system actions with Uninstall
+ * last. All state changes persist via the shared repositories; [onChanged]
+ * lets the caller re-render.
  */
 class ItemActionMenu(
     private val context: Context,
@@ -56,124 +48,143 @@ class ItemActionMenu(
     private val scope: CoroutineScope =
         (context as? LifecycleOwner)?.lifecycleScope ?: MainScope()
 
+    private fun sheet() = ActionSheet(context, themeManager, settings)
+
+    private fun str(@StringRes id: Int): String = context.getString(id)
+
+    private fun row(@StringRes label: Int, enabled: Boolean = true, onTap: () -> Unit) =
+        ActionSheet.Row(str(label), enabled = enabled, onTap = onTap)
+
+    // App rows
+
     fun showAppMenu(
         app: AppInfo,
         isDrawerRow: Boolean = false,
         folderId: Int = -1,
         onChanged: () -> Unit = {},
     ) {
-        val items = mutableListOf<Pair<String, () -> Unit>>()
+        if (folderId >= 0 && folders != null) {
+            // Member position decides which move rows are live.
+            scope.launch {
+                val keys = folders.getMembers(folderId).map { it.key }
+                buildAppMenu(app, isDrawerRow, folderId, keys.indexOf(app.key), keys.size, onChanged)
+            }
+        } else {
+            buildAppMenu(app, isDrawerRow, -1, -1, 0, onChanged)
+        }
+    }
 
-        items.add(context.getString(R.string.action_app_info) to {
-            context.openAppInfo(app.packageName, context.userFromToken(app.userToken))
-        })
+    private fun buildAppMenu(
+        app: AppInfo,
+        isDrawerRow: Boolean,
+        folderId: Int,
+        memberIndex: Int,
+        memberCount: Int,
+        onChanged: () -> Unit,
+    ) {
+        val placement = mutableListOf<ActionSheet.Row>()
+        val editing = mutableListOf<ActionSheet.Row>()
+        val system = mutableListOf<ActionSheet.Row>()
 
-        items.add(context.getString(R.string.action_change_label) to {
-            showRenameDialog(app.label) { newName ->
+        placement += row(R.string.action_add_to_home) { addToHomeScreen(app, onChanged) }
+
+        if (isDrawerRow) {
+            val pinned = appRepo.isPinned(app)
+            placement += row(if (pinned) R.string.action_unpin else R.string.action_pin) {
+                appRepo.togglePinned(app)
+                onChanged()
+            }
+            if (pinned) {
+                val order = settings.pinnedApps
+                val index = order.indexOf(app.key)
+                placement += row(R.string.action_move_up, enabled = index > 0) {
+                    settings.movePinned(app.key, up = true); onChanged()
+                }
+                placement += row(R.string.action_move_down, enabled = index in 0 until order.size - 1) {
+                    settings.movePinned(app.key, up = false); onChanged()
+                }
+                placement += row(R.string.rearrange_pinned_title, enabled = order.size >= 2) {
+                    showPinnedRearrange(onChanged)
+                }
+            }
+            if (folders != null) {
+                placement += row(R.string.action_add_to_folder) { showAddToFolderSheet(app, onChanged) }
+            }
+        }
+
+        if (folderId >= 0 && folders != null) {
+            placement += row(R.string.action_move_up, enabled = memberIndex > 0) {
+                scope.launch { folders.moveMember(folderId, app.key, up = true); onChanged() }
+            }
+            placement += row(R.string.action_move_down, enabled = memberIndex in 0 until memberCount - 1) {
+                scope.launch { folders.moveMember(folderId, app.key, up = false); onChanged() }
+            }
+            // Home-screen folders have no folder-level menu, so the full
+            // rearrange sheet hangs off the member rows too.
+            placement += row(R.string.action_rearrange, enabled = memberCount >= 2) {
+                showFolderRearrange(folderId, folderName = null, onChanged = onChanged)
+            }
+            placement += row(R.string.action_remove_from_folder) {
+                scope.launch { folders.removeMember(folderId, app); onChanged() }
+            }
+        }
+
+        editing += row(R.string.action_change_label) {
+            showRenameSheet(str(R.string.action_change_label), app.label, str(R.string.rename_hint_blank_resets)) { newName ->
                 // Blank resets to the real label; the repository rewrites any
                 // home slot holding the app too.
                 appRepo.rename(app, newName)
                 onChanged()
             }
-        })
-
-        items.add(context.getString(R.string.action_add_to_home) to {
-            addToHomeScreen(app, onChanged)
-        })
-
+        }
         val hidden = appRepo.isHidden(app)
-        items.add(
-            (if (hidden) context.getString(R.string.action_show)
-            else context.getString(R.string.action_hide)) to {
-                appRepo.toggleHidden(app)
-                context.showToast(
-                    context.getString(if (hidden) R.string.toast_shown else R.string.toast_hidden)
-                )
-                onChanged()
-            }
-        )
-
-        items.add(context.getString(R.string.action_disable_for) to {
-            showDisableForDialog(app)
-        })
-
-        if (isDrawerRow) {
-            val pinned = appRepo.isPinned(app)
-            items.add(
-                (if (pinned) context.getString(R.string.action_unpin)
-                else context.getString(R.string.action_pin)) to {
-                    appRepo.togglePinned(app)
-                    onChanged()
-                }
-            )
-            if (pinned) {
-                items.add(context.getString(R.string.action_move_up) to {
-                    settings.movePinned(app.key, up = true); onChanged()
-                })
-                items.add(context.getString(R.string.action_move_down) to {
-                    settings.movePinned(app.key, up = false); onChanged()
-                })
-                items.add(context.getString(R.string.action_rearrange) to {
-                    showPinnedRearrangeDialog(onChanged)
-                })
-            }
-            if (folders != null) {
-                items.add(context.getString(R.string.action_add_to_folder) to {
-                    showAddToFolderDialog(app, onChanged)
-                })
-            }
+        editing += row(if (hidden) R.string.action_show else R.string.action_hide) {
+            appRepo.toggleHidden(app)
+            context.showToast(str(if (hidden) R.string.toast_shown else R.string.toast_hidden))
+            onChanged()
         }
+        editing += row(R.string.action_disable_for) { showDisableForSheet(app) }
 
-        if (folderId >= 0 && folders != null) {
-            items.add(context.getString(R.string.action_move_up) to {
-                scope.launch {
-                    folders.moveMember(folderId, app.key, up = true).onFailure {
-                        context.showToast(context.getString(R.string.toast_already_at_top))
-                    }
-                    onChanged()
-                }
-            })
-            items.add(context.getString(R.string.action_move_down) to {
-                scope.launch {
-                    folders.moveMember(folderId, app.key, up = false).onFailure {
-                        context.showToast(context.getString(R.string.toast_already_at_bottom))
-                    }
-                    onChanged()
-                }
-            })
-            // Home-screen folders have no folder-level menu, so the full
-            // rearrange sheet hangs off the member rows too.
-            items.add(context.getString(R.string.action_rearrange) to {
-                showRearrangeDialog(folderId, folderName = null, onChanged = onChanged)
-            })
-            items.add(context.getString(R.string.action_remove_from_folder) to {
-                scope.launch {
-                    folders.removeMember(folderId, app)
-                    onChanged()
-                }
-            })
+        system += row(R.string.action_app_info) {
+            context.openAppInfo(app.packageName, context.userFromToken(app.userToken))
         }
-
         if (app.isShortcut) {
-            items.add(context.getString(R.string.action_delete_shortcut) to {
+            system += row(R.string.action_delete_shortcut) {
                 appRepo.deletePinnedShortcut(app)
                 onChanged()
-            })
+            }
         } else {
-            items.add(context.getString(R.string.action_uninstall) to {
+            system += row(R.string.action_uninstall) {
                 if (app.isSystem) {
-                    context.showToast(context.getString(R.string.toast_uninstall_failed))
+                    context.showToast(str(R.string.toast_uninstall_failed))
                     context.openAppInfo(app.packageName, context.userFromToken(app.userToken))
                 } else {
-                    context.requestUninstall(
-                        app.packageName,
-                        context.userFromToken(app.userToken),
-                    )
+                    context.requestUninstall(app.packageName, context.userFromToken(app.userToken))
                 }
-            })
+            }
         }
 
-        showThemedList(app.label, items)
+        sheet()
+            .title(app.label)
+            .subtitle(appSubtitle(app, hidden))
+            .group(placement)
+            .group(editing)
+            .group(system)
+            .show()
+    }
+
+    /** Only the facts that distinguish this row; nothing for the common case. */
+    private fun appSubtitle(app: AppInfo, hidden: Boolean): String? {
+        val parts = mutableListOf<String>()
+        if (app.isShortcut) parts += str(R.string.sheet_subtitle_shortcut)
+        if (app.isWorkProfile) parts += str(R.string.accessibility_work_profile)
+        if (hidden) parts += str(R.string.sheet_subtitle_hidden)
+        val muteUntil = settings.getMuteUntil(app.packageName)
+        if (muteUntil > System.currentTimeMillis()) {
+            val time = DateFormat.getTimeFormat(context).format(Date(muteUntil))
+            parts += context.getString(R.string.sheet_subtitle_muted_until, time)
+        }
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
     /**
@@ -190,14 +201,14 @@ class ItemActionMenu(
                 entry.shortcutId == app.shortcutId.orEmpty()
         }
         if (alreadyPlaced) {
-            context.showToast(context.getString(R.string.toast_already_on_home))
+            context.showToast(str(R.string.toast_already_on_home))
             return
         }
         val target = (1..SettingsRepository.MAX_SLOTS).firstOrNull { slot ->
             slot > visible || settings.getSlot(slot).isEmpty
         }
         if (target == null) {
-            context.showToast(context.getString(R.string.toast_home_full))
+            context.showToast(str(R.string.toast_home_full))
             return
         }
         if (target > visible) settings.slotCount = target
@@ -211,8 +222,77 @@ class ItemActionMenu(
                 shortcutId = app.shortcutId.orEmpty(),
             ),
         )
-        context.showToast(context.getString(R.string.toast_added_to_home))
+        context.showToast(str(R.string.toast_added_to_home))
         onChanged()
+    }
+
+    // Home slots
+
+    /**
+     * Long-press menu for a home slot. [onChangeApp] opens the picker; the
+     * picker itself only picks, every other slot action lives here.
+     */
+    fun showSlotMenu(slot: Int, onChangeApp: () -> Unit, onChanged: () -> Unit) {
+        val entry = settings.getSlot(slot)
+        val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+        val order = listOf(
+            row(R.string.action_move_up, enabled = slot > 1) {
+                settings.swapSlots(slot, slot - 1); onChanged()
+            },
+            row(R.string.action_move_down, enabled = slot < visible) {
+                settings.swapSlots(slot, slot + 1); onChanged()
+            },
+            row(R.string.rearrange_home_title, enabled = visible >= 2) { showHomeRearrange(onChanged) },
+        )
+        val clear = row(R.string.action_clear_slot) {
+            settings.removeSlot(slot)
+            onChanged()
+        }
+
+        when {
+            entry.isEmpty -> sheet()
+                .title(str(R.string.sheet_title_empty_slot))
+                .subtitle(context.getString(R.string.sheet_subtitle_home_slot, slot))
+                .group(row(R.string.action_choose_app) { onChangeApp() })
+                .group(order)
+                .group(clear)
+                .show()
+
+            entry.isFolder -> sheet()
+                .title(entry.label)
+                .subtitle(context.getString(R.string.sheet_subtitle_folder_slot, slot))
+                .group(
+                    row(R.string.action_change_app) { onChangeApp() },
+                    row(R.string.action_rename_folder) { showFolderRename(entry.folderId, entry.label, onChanged) },
+                    row(R.string.action_rearrange) {
+                        showFolderRearrange(entry.folderId, entry.label, onChanged)
+                    },
+                )
+                .group(order)
+                .group(
+                    clear,
+                    row(R.string.action_delete_folder) {
+                        confirmDeleteFolder(entry.folderId, entry.label, onChanged)
+                    },
+                )
+                .show()
+
+            else -> sheet()
+                .title(entry.label)
+                .subtitle(context.getString(R.string.sheet_subtitle_home_slot, slot))
+                .group(
+                    row(R.string.action_change_app) { onChangeApp() },
+                    row(R.string.action_change_label) { showRenameForSlot(entry, onChanged) },
+                )
+                .group(order)
+                .group(
+                    row(R.string.action_app_info) {
+                        context.openAppInfo(entry.packageName, context.userFromToken(entry.userToken))
+                    },
+                    clear,
+                )
+                .show()
+        }
     }
 
     /**
@@ -224,7 +304,7 @@ class ItemActionMenu(
      */
     fun showRenameForSlot(entry: SlotEntry, onChanged: () -> Unit = {}) {
         val key = RenamePropagator.renameKey(entry) ?: return
-        showRenameDialog(entry.label) { newName ->
+        showRenameSheet(str(R.string.action_change_label), entry.label, str(R.string.rename_hint_blank_resets)) { newName ->
             val app = appRepo.apps.value?.firstOrNull { it.key == key }
             if (app != null) {
                 // Blank resets to the real label.
@@ -237,396 +317,207 @@ class ItemActionMenu(
         }
     }
 
+    private fun showHomeRearrange(onChanged: () -> Unit) {
+        val visible = settings.slotCount.coerceIn(0, SettingsRepository.MAX_SLOTS)
+        val entries = (1..visible).map { settings.getSlot(it) }
+        if (entries.size < 2) {
+            context.showToast(str(R.string.toast_nothing_to_rearrange))
+            return
+        }
+        ReorderSheet(context, themeManager, settings).show(
+            title = str(R.string.rearrange_home_title),
+            items = entries.mapIndexed { index, entry ->
+                ReorderSheet.Item(
+                    id = index.toString(),
+                    label = if (entry.isEmpty) str(R.string.home_slot_empty) else entry.label,
+                    dimmed = entry.isEmpty,
+                )
+            },
+            // Ids index the snapshot, so every drop is a permutation of it.
+            onOrderChanged = { ids -> settings.replaceVisibleSlots(ids.map { entries[it.toInt()] }) },
+            onDismiss = onChanged,
+        )
+    }
+
+    // Folders
+
     fun showFolderMenu(
         folderId: Int,
         folderName: String,
         onChanged: () -> Unit = {},
     ) {
         val folders = folders ?: return
-        val items = listOf<Pair<String, () -> Unit>>(
-            context.getString(R.string.action_rename) to {
-                showRenameDialog(folderName) { newName ->
-                    scope.launch {
-                        folders.renameFolder(folderId, newName)
-                            .onFailure { context.showToast(context.getString(R.string.toast_invalid_folder_name)) }
-                        onChanged()
-                    }
-                }
-            },
-            context.getString(R.string.action_rearrange) to {
-                showRearrangeDialog(folderId, folderName, onChanged)
-            },
-            context.getString(R.string.action_move_up) to {
-                scope.launch { folders.moveFolder(folderId, up = true); onChanged() }
-            },
-            context.getString(R.string.action_move_down) to {
-                scope.launch { folders.moveFolder(folderId, up = false); onChanged() }
-            },
-            context.getString(R.string.action_delete) to {
-                AlertDialog.Builder(context)
-                    .setTitle(context.getString(R.string.confirm_delete_folder, folderName))
-                    .setPositiveButton(R.string.action_delete) { _, _ ->
-                        scope.launch { folders.deleteFolder(folderId); onChanged() }
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
-                    .applyLauncherTheme(themeManager, settings.fontFamily)
-            },
-        )
-        showThemedList(folderName, items)
+        scope.launch {
+            val all = folders.getFolders()
+            val index = all.indexOfFirst { it.id == folderId }
+            val memberCount = folders.getMembers(folderId).size
+            sheet()
+                .title(folderName)
+                .subtitle(str(R.string.sheet_subtitle_folder))
+                .group(
+                    row(R.string.action_rename_folder) { showFolderRename(folderId, folderName, onChanged) },
+                    row(R.string.action_rearrange, enabled = memberCount >= 2) {
+                        showFolderRearrange(folderId, folderName, onChanged)
+                    },
+                )
+                .group(
+                    row(R.string.action_move_up, enabled = index > 0) {
+                        scope.launch { folders.moveFolder(folderId, up = true); onChanged() }
+                    },
+                    row(R.string.action_move_down, enabled = index in 0 until all.size - 1) {
+                        scope.launch { folders.moveFolder(folderId, up = false); onChanged() }
+                    },
+                )
+                .group(row(R.string.action_delete_folder) { confirmDeleteFolder(folderId, folderName, onChanged) })
+                .show()
+        }
     }
 
     fun showCreateFolderDialog(app: AppInfo, onChanged: () -> Unit) {
         val folders = folders ?: return
-        showRenameDialog("") { name ->
+        showRenameSheet(str(R.string.sheet_title_new_folder), "", str(R.string.folder_name_hint)) { name ->
             scope.launch {
                 folders.createFolder(name).fold(
                     onSuccess = { folder ->
                         folders.addMember(folder.id, app)
                         onChanged()
                     },
-                    onFailure = {
-                        context.showToast(context.getString(R.string.toast_invalid_folder_name))
-                    },
+                    onFailure = { context.showToast(str(R.string.toast_invalid_folder_name)) },
                 )
             }
         }
     }
 
+    private fun showFolderRename(folderId: Int, currentName: String, onChanged: () -> Unit) {
+        val folders = folders ?: return
+        showRenameSheet(str(R.string.action_rename_folder), currentName, str(R.string.folder_name_hint)) { newName ->
+            scope.launch {
+                folders.renameFolder(folderId, newName)
+                    .onFailure { context.showToast(str(R.string.toast_invalid_folder_name)) }
+                onChanged()
+            }
+        }
+    }
+
+    private fun confirmDeleteFolder(folderId: Int, folderName: String, onChanged: () -> Unit) {
+        val folders = folders ?: return
+        val sheet = sheet()
+            .title(context.getString(R.string.confirm_delete_folder, folderName))
+            .subtitle(str(R.string.confirm_delete_folder_message))
+        sheet.button(str(android.R.string.cancel)) { sheet.dismiss() }
+        sheet.button(str(R.string.action_delete), primary = true) {
+            sheet.dismiss()
+            scope.launch { folders.deleteFolder(folderId); onChanged() }
+        }
+        sheet.show()
+    }
+
     /**
-     * Manual folder ordering. Rows rebuild in place after every move so the
-     * sheet stays open for a run of adjustments; each move is already
-     * persisted, so [onChanged] fires once on dismiss.
+     * Drag-to-reorder for folder members. Each drop is persisted as it lands,
+     * so [onChanged] fires once on dismiss.
      */
-    private fun showRearrangeDialog(folderId: Int, folderName: String?, onChanged: () -> Unit) {
+    private fun showFolderRearrange(folderId: Int, folderName: String?, onChanged: () -> Unit) {
         val folders = folders ?: return
         scope.launch {
             val name = folderName ?: folders.getFolder(folderId)?.name ?: return@launch
-            val members = folders.getMembers(folderId).toMutableList()
+            val members = folders.getMembers(folderId)
             if (members.size < 2) {
-                context.showToast(context.getString(R.string.toast_nothing_to_rearrange))
+                context.showToast(str(R.string.toast_nothing_to_rearrange))
                 return@launch
             }
-
-            val colors = themeManager.getCurrentColors()
-            val fontKey = settings.fontFamily
-            val scale = settings.textSizeScale
-            fun dp(value: Int): Int =
-                (value * context.resources.displayMetrics.density).toInt()
-
-            val list = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(20), dp(4), dp(20), dp(4))
-            }
-
-            fun arrow(
-                glyph: Int,
-                enabled: Boolean,
-                description: String,
-                onTap: () -> Unit,
-            ): TextView = TextView(context).apply {
-                text = context.getString(glyph)
-                setTextColor(colors.textColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
-                setPadding(dp(14), dp(10), dp(14), dp(10))
-                // Dimmed rather than hidden so rows keep a stable width.
-                alpha = if (enabled) 1f else 0.25f
-                contentDescription = description
-                applyLauncherFont(fontKey)
-                if (enabled) {
-                    isClickable = true
-                    setOnClickListener { onTap() }
-                }
-            }
-
-            fun render() {
-                list.removeAllViews()
-                members.forEachIndexed { index, member ->
-                    fun move(up: Boolean) {
-                        scope.launch {
-                            folders.moveMember(folderId, member.key, up)
-                            members.clear()
-                            members.addAll(folders.getMembers(folderId))
-                            render()
-                        }
+            fun items(list: List<AppInfo>) = list.map { ReorderSheet.Item(it.key, it.label) }
+            ReorderSheet(context, themeManager, settings).show(
+                title = context.getString(R.string.rearrange_title, name),
+                items = items(members),
+                sortLabel = str(R.string.action_sort_alphabetically),
+                onSort = { handle ->
+                    scope.launch {
+                        folders.sortMembersAlphabetically(folderId)
+                        handle.replace(items(folders.getMembers(folderId)))
                     }
-
-                    val row = LinearLayout(context).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                    }
-                    val label = TextView(context).apply {
-                        text = member.label
-                        setTextColor(colors.textColor)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
-                        setPadding(0, dp(6), dp(8), dp(6))
-                        applyLauncherFont(fontKey)
-                    }
-                    row.addView(
-                        label,
-                        LinearLayout.LayoutParams(
-                            0,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            1f,
-                        )
-                    )
-                    row.addView(
-                        arrow(
-                            R.string.rearrange_up,
-                            enabled = index > 0,
-                            description = context.getString(
-                                R.string.accessibility_move_up, member.label
-                            ),
-                        ) { move(up = true) }
-                    )
-                    row.addView(
-                        arrow(
-                            R.string.rearrange_down,
-                            enabled = index < members.size - 1,
-                            description = context.getString(
-                                R.string.accessibility_move_down, member.label
-                            ),
-                        ) { move(up = false) }
-                    )
-                    list.addView(
-                        row,
-                        LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        )
-                    )
-                }
-            }
-
-            render()
-
-            val dialog = AlertDialog.Builder(context)
-                .setTitle(context.getString(R.string.rearrange_title, name))
-                .setView(ScrollView(context).apply { addView(list) })
-                .setNeutralButton(R.string.action_sort_alphabetically, null)
-                .setPositiveButton(R.string.action_done, null)
-                .setOnDismissListener { onChanged() }
-                .create()
-
-            dialog.show()
-            dialog.applyLauncherTheme(themeManager, fontKey)
-            // Sorting re-renders in place; only Done closes the sheet.
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                scope.launch {
-                    folders.sortMembersAlphabetically(folderId)
-                    members.clear()
-                    members.addAll(folders.getMembers(folderId))
-                    render()
-                }
-            }
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss() }
+                },
+                onOrderChanged = { keys -> scope.launch { folders.setMemberOrder(folderId, keys) } },
+                onDismiss = onChanged,
+            )
         }
     }
 
-    /**
-     * Manual ordering for pinned drawer rows; mirrors the folder rearrange
-     * sheet, but pinned order lives in prefs so no coroutine is needed.
-     */
-    private fun showPinnedRearrangeDialog(onChanged: () -> Unit) {
-        if (settings.pinnedApps.size < 2) {
-            context.showToast(context.getString(R.string.toast_nothing_to_rearrange))
+    /** Drag-to-reorder for pinned drawer rows; pinned order lives in prefs. */
+    private fun showPinnedRearrange(onChanged: () -> Unit) {
+        val keys = settings.pinnedApps
+        if (keys.size < 2) {
+            context.showToast(str(R.string.toast_nothing_to_rearrange))
             return
         }
-
-        val colors = themeManager.getCurrentColors()
-        val fontKey = settings.fontFamily
-        val scale = settings.textSizeScale
-        fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
-
         fun labelFor(key: String): String =
-            appRepo.apps.value?.firstOrNull { it.key == key }?.label
-                ?: key.substringBefore("|")
-
-        val list = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(4), dp(20), dp(4))
-        }
-
-        fun arrow(
-            glyph: Int,
-            enabled: Boolean,
-            description: String,
-            onTap: () -> Unit,
-        ): TextView = TextView(context).apply {
-            text = context.getString(glyph)
-            setTextColor(colors.textColor)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            // Dimmed rather than hidden so rows keep a stable width.
-            alpha = if (enabled) 1f else 0.25f
-            contentDescription = description
-            applyLauncherFont(fontKey)
-            if (enabled) {
-                isClickable = true
-                setOnClickListener { onTap() }
-            }
-        }
-
-        fun render() {
-            list.removeAllViews()
-            val keys = settings.pinnedApps
-            keys.forEachIndexed { index, key ->
-                val labelText = labelFor(key)
-                fun move(up: Boolean) {
-                    settings.movePinned(key, up)
-                    render()
-                }
-
-                val row = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                }
-                val label = TextView(context).apply {
-                    text = labelText
-                    setTextColor(colors.textColor)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f * scale)
-                    setPadding(0, dp(6), dp(8), dp(6))
-                    applyLauncherFont(fontKey)
-                }
-                row.addView(
-                    label,
-                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-                )
-                row.addView(
-                    arrow(
-                        R.string.rearrange_up,
-                        enabled = index > 0,
-                        description = context.getString(R.string.accessibility_move_up, labelText),
-                    ) { move(up = true) }
-                )
-                row.addView(
-                    arrow(
-                        R.string.rearrange_down,
-                        enabled = index < keys.size - 1,
-                        description = context.getString(R.string.accessibility_move_down, labelText),
-                    ) { move(up = false) }
-                )
-                list.addView(
-                    row,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    )
-                )
-            }
-        }
-
-        render()
-
-        val dialog = AlertDialog.Builder(context)
-            .setTitle(R.string.rearrange_pinned_title)
-            .setView(ScrollView(context).apply { addView(list) })
-            .setPositiveButton(R.string.action_done, null)
-            .setOnDismissListener { onChanged() }
-            .create()
-        dialog.show()
-        dialog.applyLauncherTheme(themeManager, fontKey)
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss() }
+            appRepo.apps.value?.firstOrNull { it.key == key }?.label ?: key.substringBefore("|")
+        ReorderSheet(context, themeManager, settings).show(
+            title = str(R.string.rearrange_pinned_title),
+            items = keys.map { ReorderSheet.Item(it, labelFor(it)) },
+            onOrderChanged = { order -> settings.pinnedApps = order },
+            onDismiss = onChanged,
+        )
     }
 
-    private fun showAddToFolderDialog(app: AppInfo, onChanged: () -> Unit) {
+    private fun showAddToFolderSheet(app: AppInfo, onChanged: () -> Unit) {
         val folders = folders ?: return
         scope.launch {
             val existing = folders.getFolders()
-            val names = existing.map { it.name } + context.getString(R.string.action_create_folder)
-            AlertDialog.Builder(context)
-                .setTitle(R.string.action_add_to_folder)
-                .setItems(names.toTypedArray()) { _, which ->
-                    if (which < existing.size) {
-                        scope.launch {
-                            folders.addMember(existing[which].id, app).fold(
-                                onSuccess = { onChanged() },
-                                onFailure = {
-                                    context.showToast(
-                                        context.getString(R.string.toast_already_in_folder)
-                                    )
-                                },
-                            )
-                        }
-                    } else {
-                        showCreateFolderDialog(app, onChanged)
+            val rows = existing.map { folder ->
+                ActionSheet.Row(folder.name) {
+                    scope.launch {
+                        folders.addMember(folder.id, app).fold(
+                            onSuccess = { onChanged() },
+                            onFailure = { context.showToast(str(R.string.toast_already_in_folder)) },
+                        )
                     }
                 }
-                .setNegativeButton(android.R.string.cancel, null)
+            }
+            sheet()
+                .title(str(R.string.action_add_to_folder))
+                .subtitle(app.label)
+                .group(rows)
+                .group(row(R.string.picker_new_folder) { showCreateFolderDialog(app, onChanged) })
                 .show()
-                .applyLauncherTheme(themeManager, settings.fontFamily)
         }
     }
 
-    private fun showThemedList(title: String, items: List<Pair<String, () -> Unit>>) {
-        AlertDialog.Builder(context)
-            .setTitle(title)
-            .setItems(items.map { it.first }.toTypedArray()) { _, which ->
-                items[which].second()
-            }
-            .show()
-            .applyLauncherTheme(themeManager, settings.fontFamily)
+    // Shared prompts
+
+    private fun showRenameSheet(title: String, current: String, hint: String, onSave: (String) -> Unit) {
+        val sheet = sheet().title(title)
+        val input = sheet.input(current, hint, onSave)
+        sheet.button(str(android.R.string.cancel)) { sheet.dismiss() }
+        sheet.button(str(R.string.action_save), primary = true) {
+            sheet.dismiss()
+            onSave(input.text.toString().trim())
+        }
+        sheet.show()
     }
 
-    private fun showRenameDialog(currentLabel: String, onSave: (String) -> Unit) {
-        val input = EditText(context).apply {
-            setText(currentLabel)
-            setSelection(0, text.length)
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            isSingleLine = true
-        }
-
-        val dialog = AlertDialog.Builder(context)
-            .setTitle(R.string.action_change_label)
-            .setView(input)
-            .setPositiveButton(R.string.action_rename) { _, _ ->
-                onSave(input.text.toString().trim())
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-
-        // Commit via keyboard Done too, not just the button.
-        input.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
-                onSave(input.text.toString().trim())
-                dialog.dismiss()
-                true
-            } else {
-                false
-            }
-        }
-
-        dialog.show()
-        dialog.applyLauncherTheme(themeManager, settings.fontFamily)
-        input.requestFocus()
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun showDisableForDialog(app: AppInfo) {
+    private fun showDisableForSheet(app: AppInfo) {
         // Muting works through the notification listener; route to the system
         // access screen on first use.
         if (!AppMuteListenerService.isConnected) {
-            context.showToast(context.getString(R.string.notification_access_needed))
+            context.showToast(str(R.string.notification_access_needed))
             runCatching {
                 context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             }
             return
         }
-
-        val hours = listOf(1, 2, 4, 8)
-        val labels = hours.map { context.getString(R.string.disable_for_hours, it) }
-        AlertDialog.Builder(context)
-            .setTitle(context.getString(R.string.action_disable_for))
-            .setItems(labels.toTypedArray()) { _, which ->
-                val until = System.currentTimeMillis() + hours[which] * 60 * 60 * 1000L
+        val rows = listOf(1, 2, 4, 8).map { hours ->
+            ActionSheet.Row(context.resources.getQuantityString(R.plurals.disable_for_hours, hours, hours)) {
+                val until = System.currentTimeMillis() + hours * 60 * 60 * 1000L
                 settings.setMuteUntil(app.packageName, until)
                 AppMuteListenerService.instance?.cancelAllFrom(app.packageName)
                 val time = DateFormat.getTimeFormat(context).format(Date(until))
                 context.showToast(context.getString(R.string.toast_disabled_until, time))
             }
-            .setNegativeButton(android.R.string.cancel, null)
+        }
+        sheet()
+            .title(str(R.string.action_disable_for))
+            .subtitle(app.label)
+            .group(rows)
             .show()
-            .applyLauncherTheme(themeManager, settings.fontFamily)
     }
 }
