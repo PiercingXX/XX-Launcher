@@ -140,6 +140,15 @@
             android:authorities="${applicationId}.logs"
             android:exported="true"
             android:permission="com.piercingxx.apps.permission.READ_SUITE_LOGS" />
+
+        <!-- Suite backup door; contract: xx-apps/docs/SUITE-BACKUP-PROVIDER.md.
+             xx-apps declares com.piercingxx.suite.permission.BACKUP; this app
+             only references it. -->
+        <provider
+            android:name=".backup.LauncherBackupProvider"
+            android:authorities="${applicationId}.suite.backup"
+            android:exported="true"
+            android:permission="com.piercingxx.suite.permission.BACKUP" />
     </application>
 
 </manifest>

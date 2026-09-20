@@ -6,7 +6,10 @@ import com.piercingxx.xxlauncher.data.SettingsRepository
 import com.piercingxx.xxlauncher.data.SlotEntry
 import com.piercingxx.xxlauncher.folder.FolderManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.io.OutputStream
 
 private const val BACKUP_VERSION = 1
 
@@ -199,6 +202,18 @@ class BackupManager(
 
         Result.success(Unit)
     }
+
+    /**
+     * Synchronous stream wrappers for callers that cannot suspend, such as
+     * the suite backup provider's `ContentProvider.call()` thread. These
+     * just adapt [exportToJson]/[importFromJson]; no logic is duplicated.
+     */
+    fun exportToStream(out: OutputStream) {
+        out.write(runBlocking { exportToJson() }.toByteArray())
+    }
+
+    fun importFromStream(input: InputStream): Result<Unit> =
+        runBlocking { importFromJson(input.readBytes().toString(Charsets.UTF_8)) }
 }
 
 internal fun parseBackupJson(gson: Gson, json: String): Result<BackupData> {
