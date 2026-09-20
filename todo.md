@@ -85,3 +85,14 @@ user is disabled.
 
 - [ ] L-E1 — Package id frozen for the store seed. Keep broadcasting
       `THEME_CHANGED` to the seeded catalog packages.
+
+## BACKUP wave (operator lock 2026-09-20)
+
+Contract: `xx-apps/docs/SUITE-BACKUP-PROVIDER.md`; server
+`skippy-tel-network/docs/SUITE-BACKUP.md`. No release of this app ships
+without its provider once the `suite-backup` library is on the estate
+Maven.
+
+- [ ] BK-1 — Ship `SuiteBackupProvider` at `${applicationId}.suite.backup` guarded by `com.piercingxx.suite.permission.BACKUP` plus the in-code signature check. Snapshot contains its existing JSON backup as `export/layout.json`, `prefs/`, the folder DB. Restore applies atomically then exits the process.
+  - files: app/src/main/AndroidManifest.xml, app/src/main/java/**/backup/SuiteBackupProvider.kt
+  - verify: unit test round-trips snapshot → restore on an in-memory store; xx-apps Back up now lists this app with a size
