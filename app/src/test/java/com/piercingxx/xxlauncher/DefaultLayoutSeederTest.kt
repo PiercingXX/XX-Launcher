@@ -127,4 +127,43 @@ class DefaultLayoutSeederTest {
         // The hidden-list still applies so preinstalled noise stays out of the drawer.
         assertTrue(plan.hiddenPackages.isNotEmpty())
     }
+
+    @Test
+    fun `suite apps take every slot they align with`() {
+        val resolver = FakeResolver(
+            installed = setOf(
+                "com.piercingxx.xxnote", "com.google.android.keep",
+                "com.piercingxx.audiobook", "com.audiobookshelf.app",
+                "com.piercingxx.xxdialer", "com.google.android.dialer",
+                "com.piercingxx.txxt", "com.google.android.apps.messaging",
+                "dev.xxemail", "com.google.android.gm",
+                "com.mattermost.rn", "com.synology.dschat",
+                "com.piercingxx.calendar", "com.google.android.calendar",
+                "com.piercingxx.xxcalculator", "com.google.android.calculator",
+                "com.piercingxx.camera", "com.google.android.GoogleCamera",
+                "com.piercingxx.photos", "com.synology.projectkailash",
+            ),
+            dialer = "com.google.android.dialer",
+            sms = "com.google.android.apps.messaging",
+            camera = "com.google.android.GoogleCamera",
+            calculator = "com.google.android.calculator",
+        )
+        val plan = DefaultLayoutSeeder.plan(resolver)
+        val byLabel = plan.slots.flatMap { slot ->
+            slot.app?.let { listOf(slot.label to it.packageName) }
+                ?: slot.folderMembers.map { it.label to it.packageName }
+        }.toMap()
+        assertEquals("com.piercingxx.xxnote", byLabel["Notes"])
+        assertEquals("com.piercingxx.audiobook", byLabel["Audiobook"])
+        assertEquals("com.piercingxx.xxdialer", byLabel["Phone"])
+        assertEquals("com.piercingxx.txxt", byLabel["Text"])
+        assertEquals("dev.xxemail", byLabel["Email"])
+        assertEquals("com.mattermost.rn", byLabel["Chat"])
+        assertEquals("com.piercingxx.calendar", byLabel["Calendar"])
+        assertEquals("com.piercingxx.xxcalculator", byLabel["Calculator"])
+        assertEquals("com.piercingxx.camera", byLabel["Camera"])
+        assertEquals("com.piercingxx.photos", byLabel["Photos"])
+        assertEquals("com.piercingxx.camera", plan.swipeRight?.packageName)
+        assertEquals("Notes", plan.renameLabels["com.piercingxx.xxnote"])
+    }
 }

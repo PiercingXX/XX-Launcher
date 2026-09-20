@@ -12,14 +12,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Seeds the out-of-the-box home screen on first launch:
+ * Seeds the out-of-the-box home screen on first launch. Every slot prefers
+ * the PiercingXX suite app and falls back to the stock or third-party app
+ * only when the suite one is not installed:
  *
- *   Notes             -> Google Keep
- *   Audio    (folder) -> Audiobook (Audiobookshelf), Music (YouTube Music)
- *   Comms    (folder) -> Phone, Text, Email (Gmail), Chat (Synology Chat),
+ *   Notes             -> xx-note, else Google Keep
+ *   Audio    (folder) -> Audiobook (xx-audiobook, else Audiobookshelf),
+ *                        Music (YouTube Music)
+ *   Comms    (folder) -> Phone (xx-dialer, else the default dialer),
+ *                        Text (Txxt, else the default SMS app),
+ *                        Email (xx-email, else Gmail),
+ *                        Chat (Mattermost, else Synology Chat),
  *                        SoftPhone (Cloud Softphone)
- *   Calendar          -> Google Calendar
- *   Tools    (folder) -> Waterfox, Calculator, Camera, Photos (Synology Photos)
+ *   Calendar          -> xx-calendar, else Google Calendar
+ *   Tools    (folder) -> Waterfox, Calculator (xx-calculator, else system),
+ *                        Camera (xx-camera, else the default camera),
+ *                        Photos (xx-photos, else Synology Photos)
  *
  * Swipe left opens Skippy (matched by app label — it installs as a PWA so
  * its package name varies); swipe right opens the camera. Members that don't
@@ -43,6 +51,18 @@ object DefaultLayoutSeeder {
         fun resolveCameraApp(): ResolvedApp?
         fun resolveCalculator(): ResolvedApp?
     }
+
+    // Suite apps come first everywhere they align with a default.
+    private const val PKG_XX_NOTE = "com.piercingxx.xxnote"
+    private const val PKG_XX_AUDIOBOOK = "com.piercingxx.audiobook"
+    private const val PKG_XX_DIALER = "com.piercingxx.xxdialer"
+    private const val PKG_TXXT = "com.piercingxx.txxt"
+    private const val PKG_XX_EMAIL = "dev.xxemail"
+    private const val PKG_MATTERMOST = "com.mattermost.rn"
+    private const val PKG_XX_CALENDAR = "com.piercingxx.calendar"
+    private const val PKG_XX_CALCULATOR = "com.piercingxx.xxcalculator"
+    private const val PKG_XX_CAMERA = "com.piercingxx.camera"
+    private const val PKG_XX_PHOTOS = "com.piercingxx.photos"
 
     private const val PKG_KEEP = "com.google.android.keep"
     private const val PKG_AUDIOBOOKSHELF = "com.audiobookshelf.app"
@@ -93,30 +113,30 @@ object DefaultLayoutSeeder {
     )
 
     fun plan(resolver: AppResolver): Plan {
-        val notes = resolver.resolvePackage(PKG_KEEP)?.copy(label = "Notes")
-        val calendar = resolver.resolvePackage(PKG_CALENDAR)?.copy(label = "Calendar")
+        val notes = fallback(resolver, listOf(PKG_XX_NOTE, PKG_KEEP))?.copy(label = "Notes")
+        val calendar = fallback(resolver, listOf(PKG_XX_CALENDAR, PKG_CALENDAR))?.copy(label = "Calendar")
 
         val audio = listOfNotNull(
-            resolver.resolvePackage(PKG_AUDIOBOOKSHELF)?.copy(label = "Audiobook"),
+            fallback(resolver, listOf(PKG_XX_AUDIOBOOK, PKG_AUDIOBOOKSHELF))?.copy(label = "Audiobook"),
             resolver.resolvePackage(PKG_YT_MUSIC)?.copy(label = "Music"),
         )
         val comms = listOfNotNull(
-            (resolver.resolveDialer() ?: fallback(resolver, PKG_DIALER_FALLBACKS))
-                ?.copy(label = "Phone"),
-            (resolver.resolveSmsApp() ?: fallback(resolver, PKG_SMS_FALLBACKS))
-                ?.copy(label = "Text"),
-            resolver.resolvePackage(PKG_GMAIL)?.copy(label = "Email"),
-            resolver.resolvePackage(PKG_SYNOLOGY_CHAT)?.copy(label = "Chat"),
+            (resolver.resolvePackage(PKG_XX_DIALER) ?: resolver.resolveDialer()
+                ?: fallback(resolver, PKG_DIALER_FALLBACKS))?.copy(label = "Phone"),
+            (resolver.resolvePackage(PKG_TXXT) ?: resolver.resolveSmsApp()
+                ?: fallback(resolver, PKG_SMS_FALLBACKS))?.copy(label = "Text"),
+            fallback(resolver, listOf(PKG_XX_EMAIL, PKG_GMAIL))?.copy(label = "Email"),
+            fallback(resolver, listOf(PKG_MATTERMOST, PKG_SYNOLOGY_CHAT))?.copy(label = "Chat"),
             resolver.resolvePackage(PKG_CLOUD_SOFTPHONE)?.copy(label = "SoftPhone"),
         )
-        val camera = (resolver.resolveCameraApp() ?: fallback(resolver, PKG_CAMERA_FALLBACKS))
-            ?.copy(label = "Camera")
+        val camera = (resolver.resolvePackage(PKG_XX_CAMERA) ?: resolver.resolveCameraApp()
+            ?: fallback(resolver, PKG_CAMERA_FALLBACKS))?.copy(label = "Camera")
         val tools = listOfNotNull(
             fallback(resolver, PKG_WATERFOX)?.copy(label = "Waterfox"),
-            (resolver.resolveCalculator() ?: fallback(resolver, PKG_CALCULATOR_FALLBACKS))
-                ?.copy(label = "Calculator"),
+            (resolver.resolvePackage(PKG_XX_CALCULATOR) ?: resolver.resolveCalculator()
+                ?: fallback(resolver, PKG_CALCULATOR_FALLBACKS))?.copy(label = "Calculator"),
             camera,
-            resolver.resolvePackage(PKG_SYNOLOGY_PHOTOS)?.copy(label = "Photos"),
+            fallback(resolver, listOf(PKG_XX_PHOTOS, PKG_SYNOLOGY_PHOTOS))?.copy(label = "Photos"),
         )
 
         val slots = buildList {
