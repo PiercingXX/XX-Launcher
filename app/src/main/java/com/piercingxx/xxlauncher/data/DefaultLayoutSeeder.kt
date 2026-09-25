@@ -13,14 +13,16 @@ import kotlinx.coroutines.withContext
  * suite. Apps keep their own names — the slot shows whatever the installed
  * app calls itself; the seeder never renames.
  *
- *   slot 1            -> XX-Note
- *   Audio    (folder) -> Audiobook, SKPP Radio
- *   Comms    (folder) -> XX-Dialer, TxxT, XX Email
- *   slot 4            -> XX-Calendar
- *   Tools    (folder) -> XX-Calculator, XX Camera, xx-photos
+ *   slot 1            -> xx-note
+ *   Audio    (folder) -> xx-audiobook, SKPP-Radio
+ *   Comms    (folder) -> xx-dialer, Txxt, xx-chat, xx-email
+ *   slot 4            -> xx-calendar
+ *   Tools    (folder) -> Waterfox, xx-calculator, xx-camera, xx-photos, xx-weather, xx-auth
  *
- * Swipe left opens Skippy (matched by app label — it installs as a PWA so
- * its package name varies); swipe right opens XX Camera. Suite apps that are
+ * This is the operator's Pixel 9 Pro home screen as of 2026-09-25, kept as
+ * the out-of-the-box layout for every fresh install. Swipe left opens Skippy
+ * (matched by app label — it installs as a PWA so its package name varies);
+ * swipe right opens xx-camera. Suite apps that are
  * not installed are skipped; folders with no members are not created. There
  * are no third-party fallbacks: "Reset home layout" re-seeds once the suite
  * is installed. Never overwrites a configured home screen.
@@ -44,11 +46,15 @@ object DefaultLayoutSeeder {
     private const val PKG_SKPP_RADIO = "com.skpp.radio"
     private const val PKG_XX_DIALER = "com.piercingxx.xxdialer"
     private const val PKG_TXXT = "com.piercingxx.txxt"
+    private const val PKG_XX_CHAT = "com.piercingxx.chat"
     private const val PKG_XX_EMAIL = "dev.xxemail"
     private const val PKG_XX_CALENDAR = "com.piercingxx.calendar"
     private const val PKG_XX_CALCULATOR = "com.piercingxx.xxcalculator"
     private const val PKG_XX_CAMERA = "com.piercingxx.camera"
     private const val PKG_XX_PHOTOS = "com.piercingxx.photos"
+    private const val PKG_WATERFOX = "net.waterfox.android.release"
+    private const val PKG_XX_WEATHER = "com.xx.weather"
+    private const val PKG_XX_AUTH = "com.piercingxx.xxauth"
     private const val LABEL_SKIPPY = "Skippy"
 
     /** Hidden out of the box; they only ever show up via search. */
@@ -96,12 +102,16 @@ object DefaultLayoutSeeder {
         val comms = listOfNotNull(
             resolver.resolvePackage(PKG_XX_DIALER),
             resolver.resolvePackage(PKG_TXXT),
+            resolver.resolvePackage(PKG_XX_CHAT),
             resolver.resolvePackage(PKG_XX_EMAIL),
         )
         val tools = listOfNotNull(
+            resolver.resolvePackage(PKG_WATERFOX),
             resolver.resolvePackage(PKG_XX_CALCULATOR),
             camera,
             resolver.resolvePackage(PKG_XX_PHOTOS),
+            resolver.resolvePackage(PKG_XX_WEATHER),
+            resolver.resolvePackage(PKG_XX_AUTH),
         )
 
         // App slots carry the app's own label; only folders have a name of their own.

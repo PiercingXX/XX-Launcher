@@ -28,16 +28,20 @@ class DefaultLayoutSeederTest {
     }
 
     private val suite = mapOf(
-        "com.piercingxx.xxnote" to "XX-Note",
-        "com.piercingxx.audiobook" to "Audiobook",
-        "com.skpp.radio" to "SKPP Radio",
-        "com.piercingxx.xxdialer" to "XX-Dialer",
-        "com.piercingxx.txxt" to "TxxT",
-        "dev.xxemail" to "XX Email",
-        "com.piercingxx.calendar" to "XX-Calendar",
-        "com.piercingxx.xxcalculator" to "XX-Calculator",
-        "com.piercingxx.camera" to "XX Camera",
+        "com.piercingxx.xxnote" to "xx-note",
+        "com.piercingxx.audiobook" to "xx-audiobook",
+        "com.skpp.radio" to "SKPP-Radio",
+        "com.piercingxx.xxdialer" to "xx-dialer",
+        "com.piercingxx.txxt" to "Txxt",
+        "com.piercingxx.chat" to "xx-chat",
+        "dev.xxemail" to "xx-email",
+        "com.piercingxx.calendar" to "xx-calendar",
+        "net.waterfox.android.release" to "Waterfox",
+        "com.piercingxx.xxcalculator" to "xx-calculator",
+        "com.piercingxx.camera" to "xx-camera",
         "com.piercingxx.photos" to "xx-photos",
+        "com.xx.weather" to "xx-weather",
+        "com.piercingxx.xxauth" to "xx-auth",
     )
 
     @Test
@@ -52,7 +56,7 @@ class DefaultLayoutSeederTest {
 
         // App slots show the app's own name; only folders carry a name of their own.
         assertEquals(
-            listOf("XX-Note", "Audio", "Comms", "XX-Calendar", "Tools"),
+            listOf("xx-note", "Audio", "Comms", "xx-calendar", "Tools"),
             plan.slots.map { it.label },
         )
         assertEquals(
@@ -60,15 +64,18 @@ class DefaultLayoutSeederTest {
             plan.slots[1].folderMembers.map { it.packageName },
         )
         assertEquals(
-            listOf("com.piercingxx.xxdialer", "com.piercingxx.txxt", "dev.xxemail"),
+            listOf("com.piercingxx.xxdialer", "com.piercingxx.txxt", "com.piercingxx.chat", "dev.xxemail"),
             plan.slots[2].folderMembers.map { it.packageName },
         )
         assertEquals(
-            listOf("com.piercingxx.xxcalculator", "com.piercingxx.camera", "com.piercingxx.photos"),
+            listOf(
+                "net.waterfox.android.release", "com.piercingxx.xxcalculator", "com.piercingxx.camera",
+                "com.piercingxx.photos", "com.xx.weather", "com.piercingxx.xxauth",
+            ),
             plan.slots[4].folderMembers.map { it.packageName },
         )
         assertEquals(
-            listOf("XX-Calculator", "XX Camera", "xx-photos"),
+            listOf("Waterfox", "xx-calculator", "xx-camera", "xx-photos", "xx-weather", "xx-auth"),
             plan.slots[4].folderMembers.map { it.label },
         )
         assertEquals("app.skippy.pwa", plan.swipeLeft?.packageName)
