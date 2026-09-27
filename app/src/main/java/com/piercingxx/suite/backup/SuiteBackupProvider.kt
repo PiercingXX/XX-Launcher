@@ -54,7 +54,12 @@ open class SuiteBackupProvider : ContentProvider() {
     /** Runs after files are swapped in, before the process ends. */
     open fun afterRestore() {}
 
-    override fun onCreate(): Boolean = true
+    override fun onCreate(): Boolean {
+        // A restore the process died in must be finished or undone before
+        // anything reads prefs; providers start before Application.onCreate.
+        runCatching { snapshot.recoverInterruptedRestore() }
+        return true
+    }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         requireSuiteCaller()
@@ -88,6 +93,7 @@ open class SuiteBackupProvider : ContentProvider() {
     }
 
     private fun buildSnapshot(): Bundle {
+        sweepStale()
         val token = System.nanoTime().toString(36)
         val target = File(cacheDir(), "snapshot-$token.tar.gz")
         val meta = JSONObject()
@@ -107,6 +113,7 @@ open class SuiteBackupProvider : ContentProvider() {
     }
 
     private fun restoreBegin(): Bundle {
+        sweepStale()
         val token = System.nanoTime().toString(36)
         File(cacheDir(), "restore-$token.tar.gz").delete()
         return Bundle().apply { putString("uri", "content://${authority()}/restore/$token") }
@@ -116,9 +123,14 @@ open class SuiteBackupProvider : ContentProvider() {
         val staged = cacheDir().listFiles()?.filter { it.name.startsWith("restore-") }?.maxByOrNull { it.lastModified() }
             ?: return failure("nothing staged")
         return try {
-            val meta = snapshot.apply(staged) { name, body -> applyExport(name, body) }
-            val theirSchema = runCatching { JSONObject(meta).optInt("schema", 1) }.getOrDefault(1)
-            if (theirSchema > schema) return failure("schema")
+            // Refuse a newer schema before touching anything, not after.
+            val peek = snapshot.readMeta(staged).orEmpty()
+            val theirSchema = runCatching { JSONObject(peek).optInt("schema", 1) }.getOrDefault(1)
+            if (theirSchema > schema) {
+                staged.delete()
+                return failure("schema")
+            }
+            snapshot.apply(staged) { name, body -> applyExport(name, body) }
             afterRestore()
             staged.delete()
             // Let the reply reach xx-apps, then start clean on the restored files.
@@ -140,8 +152,9 @@ open class SuiteBackupProvider : ContentProvider() {
             "snapshot" -> {
                 val f = File(cacheDir(), "snapshot-$token.tar.gz")
                 require(f.isFile) { "no such snapshot" }
-                // Delete-on-close: the file goes away once xx-apps has read it.
-                ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY).also { f.deleteOnExit() }
+                // Unlink once open: the descriptor keeps the bytes readable for
+                // xx-apps, and nothing is left in the cache afterwards.
+                ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY).also { f.delete() }
             }
             "restore" -> {
                 val f = File(cacheDir(), "restore-$token.tar.gz")
@@ -166,6 +179,12 @@ open class SuiteBackupProvider : ContentProvider() {
         if (pm.checkSignatures(callerUid, Process.myUid()) != PackageManager.SIGNATURE_MATCH) {
             throw SecurityException("caller signature does not match")
         }
+    }
+
+    /** Drop snapshots / restores older than an hour that no one collected. */
+    private fun sweepStale() {
+        val cutoff = System.currentTimeMillis() - 60 * 60 * 1000L
+        cacheDir().listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
     private fun cacheDir(): File = File(context!!.cacheDir, "suite-backup").apply { mkdirs() }

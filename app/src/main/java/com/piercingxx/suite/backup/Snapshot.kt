@@ -103,7 +103,7 @@ class Snapshot(private val dataDir: File) {
      * meta.json text. Caller ends the process afterwards.
      */
     fun apply(archive: File, applyExport: (String, InputStream) -> Unit): String {
-        val staging = File(dataDir, "suite-restore-staging").apply { deleteRecursively(); mkdirs() }
+        val staging = File(dataDir, STAGING).apply { deleteRecursively(); mkdirs() }
         var meta = ""
         try {
             GZIPInputStream(FileInputStream(archive)).use { gz ->
@@ -130,19 +130,18 @@ class Snapshot(private val dataDir: File) {
                     }
                 }
             }
-            // Swap in. Prefs and databases replace wholesale; files merge.
-            // `prefs/datastore/*` came from files/datastore and goes back there;
-            // the rest of `prefs/` is shared_prefs.
+            // Swap in. Prefs and databases replace wholesale — each by two
+            // renames, so a crash leaves the old set or the new one, never a
+            // mix ([recoverInterruptedRestore] finishes or undoes it). Files
+            // merge. `prefs/datastore/*` came from files/datastore and goes
+            // back there; the rest of `prefs/` is shared_prefs.
             File(staging, "prefs").takeIf { it.isDirectory }?.let { stagedPrefs ->
-                swapDir(File(stagedPrefs, "datastore"), File(filesDir, "datastore"), wipeTarget = true)
-                sharedPrefsDir.listFiles()?.forEach { it.deleteRecursively() }
-                sharedPrefsDir.mkdirs()
-                stagedPrefs.listFiles()?.filter { it.isFile }?.forEach { it.copyTo(File(sharedPrefsDir, it.name), overwrite = true) }
+                File(stagedPrefs, "datastore").takeIf { it.isDirectory }?.let { replaceDir(it, File(filesDir, "datastore")) }
+                stagedPrefs.listFiles()?.filter { !it.isFile }?.forEach { it.deleteRecursively() }
+                replaceDir(stagedPrefs, sharedPrefsDir)
             }
             File(staging, "db").takeIf { it.isDirectory }?.let { staged ->
-                databasesDir.listFiles()?.forEach { if (it.isFile) it.delete() }
-                databasesDir.mkdirs()
-                staged.listFiles()?.forEach { it.copyTo(File(databasesDir, it.name), overwrite = true) }
+                replaceDir(staged, databasesDir)
             }
             swapDir(File(staging, "files"), filesDir, wipeTarget = false)
             File(staging, "export").takeIf { it.isDirectory }?.walkTopDown()?.filter { it.isFile }?.forEach { f ->
@@ -152,6 +151,47 @@ class Snapshot(private val dataDir: File) {
             staging.deleteRecursively()
         }
         return meta
+    }
+
+    /** meta.json of [archive] without applying anything (null when it has none). */
+    fun readMeta(archive: File): String? {
+        GZIPInputStream(FileInputStream(archive)).use { gz ->
+            val tar = TarReader(gz)
+            while (true) {
+                val entry = tar.next() ?: return null
+                if (!entry.isDirectory && entry.name == SnapshotLayout.META) return String(tar.readBytes())
+                if (!entry.isDirectory) tar.readBytes()
+            }
+        }
+    }
+
+    /**
+     * Finish or undo a restore the process died in the middle of. Call it
+     * before the app reads any prefs or database (the provider does, from
+     * onCreate, which runs before Application.onCreate).
+     */
+    fun recoverInterruptedRestore() {
+        for (target in listOf(sharedPrefsDir, databasesDir, File(filesDir, "datastore"))) {
+            val old = File(target.parentFile, target.name + OLD_SUFFIX)
+            if (!old.exists()) continue
+            // Both present: the new set landed, only the cleanup was cut short.
+            // Target missing: the swap stopped half way, so put the old set back.
+            if (target.exists()) old.deleteRecursively() else old.renameTo(target)
+        }
+        File(dataDir, STAGING).deleteRecursively()
+    }
+
+    /** Replace [target] with [staged] by renames on the same filesystem. */
+    private fun replaceDir(staged: File, target: File) {
+        val old = File(target.parentFile, target.name + OLD_SUFFIX)
+        old.deleteRecursively()
+        target.parentFile?.mkdirs()
+        if (target.exists() && !target.renameTo(old)) error("cannot move ${target.name} aside")
+        if (!staged.renameTo(target)) {
+            old.renameTo(target)
+            error("cannot move the restored ${target.name} in")
+        }
+        old.deleteRecursively()
     }
 
     private fun swapDir(staged: File, target: File, wipeTarget: Boolean) {
@@ -186,6 +226,11 @@ class Snapshot(private val dataDir: File) {
         val out = File(base, rel).canonicalFile
         require(out.path.startsWith(base.canonicalPath + File.separator)) { "unsafe entry: $rel" }
         return out
+    }
+
+    private companion object {
+        const val STAGING = "suite-restore-staging"
+        const val OLD_SUFFIX = ".suite-restore-old"
     }
 
     private class DigestOut(private val inner: OutputStream, private val digest: MessageDigest) : OutputStream() {
